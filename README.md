@@ -37,7 +37,7 @@
 ### 1. 克隆 & 安装
 
 ```bash
-git clone https://github.com/your-username/lyricvibe.git
+git clone https://github.com/wangcunce-sudo/LyricVibe.git
 cd lyricvibe
 npm install
 ```
@@ -196,13 +196,13 @@ AI 会将其转化为实际渲染参数。
 
 ## 📸 截图
 
-| 首页 | 创作工作台 |
+| 首页 | 创作工作台（Demo 加载后） |
 |:---:|:---:|
-| ![首页](screenshots/homepage.png) | ![工作台](screenshots/create-page.png) |
+| ![首页](screenshots/homepage.png) | ![Demo](screenshots/demo-loaded.png) |
 
-| Demo 加载 | 导出中 |
+| 滤镜面板 | 高级设置 |
 |:---:|:---:|
-| ![Demo](screenshots/demo-loaded.png) | ![导出](screenshots/export-overlay.png) |
+| ![滤镜](screenshots/filter-tab.png) | ![高级](screenshots/advanced-tab.png) |
 
 ---
 
