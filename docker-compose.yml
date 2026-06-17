@@ -1,0 +1,46 @@
+# LyricVibe Docker Compose
+# 一键启动 Next.js 前端 + Remotion 渲染服务
+# 使用方式: docker compose up -d
+
+version: "3.8"
+
+services:
+  # Next.js 前端应用
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # AI API Keys（替换为你的实际 key）
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # 渲染服务器地址（指向 renderer 服务）
+      - RENDER_SERVER_URL=http://renderer:3000
+      # Chromium 路径
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    depends_on:
+      - renderer
+    restart: unless-stopped
+    volumes:
+      - render_output:/app/out/renders
+
+  # Remotion 渲染服务
+  renderer:
+    build:
+      context: .
+      dockerfile: Dockerfile.renderer
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=production
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    restart: unless-stopped
+    volumes:
+      - render_output:/app/out/renders
+
+volumes:
+  render_output:

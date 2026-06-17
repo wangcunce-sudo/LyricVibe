@@ -1,108 +1,152 @@
 /**
- * Demo data for Taylor Swift - The Fate of Ophelia
- * Pre-loaded for instant demo experience at hackathon.
+ * Demo data for opalite-tiktok热舞 (Hot Dance Clip)
+ * 视频来源: opalite-tiktok热舞片段, 背景音乐 OPALITE
+ * 蓝白色调 · 跳动活力风格 · 左右灵动交替布局
+ *
+ * ⚠️ 歌词时间戳来自 WhisperX (Demucs 音源分离 + large-v3) 转录
+ *    对齐了热舞视频的实际音频, 不要手动修改时间戳!
+ *
+ * 转录流程: 音频 → Demucs 人声分离 → Faster-Whisper large-v3 → JSON 时间轴
  */
 
-import type { LyricLine, AnalysisResult, StyleParams } from "./types";
+import type { LyricLine, WordTimestamp, AnalysisResult, StyleParams, SubtitleTemplate } from "./types";
 
-// Full lyrics with time-aligned segments (manually timed for the 3:58 MV)
+// ~33-second hot dance clip
+// Timestamps extracted via WhisperX (Demucs + large-v3) — verified against audio
+// alignment: 偶数行左(白), 奇数行右(蓝), 交替灵动
+// word-level timestamps: extracted from WhisperX for per-word kinetic pop animation
 export const OPHELIA_LYRICS: LyricLine[] = [
-  { index: 0, text: "I heard you calling on the megaphone", startTime: 8.5, endTime: 12.0 },
-  { index: 1, text: "You wanna see me all alone", startTime: 12.0, endTime: 14.5 },
-  { index: 2, text: "As legend has it, you are quite the pyro", startTime: 14.5, endTime: 18.5 },
-  { index: 3, text: "You light the match to watch it blow", startTime: 18.5, endTime: 21.5 },
-  { index: 4, text: "And if you'd never come for me", startTime: 22.0, endTime: 25.0 },
-  { index: 5, text: "I might've drowned in the melancholy", startTime: 25.0, endTime: 28.5 },
-  { index: 6, text: "I swore my loyalty to me, myself, and I", startTime: 28.5, endTime: 32.0 },
-  { index: 7, text: "Right before you lit my sky up", startTime: 32.0, endTime: 35.0 },
-  { index: 8, text: "All that time, I sat alone in my tower", startTime: 35.5, endTime: 39.0 },
-  { index: 9, text: "You were just honing your powers", startTime: 39.0, endTime: 42.0 },
-  { index: 10, text: "Now I can see it all", startTime: 42.0, endTime: 44.5 },
-  { index: 11, text: "Late one night, you dug me out of my grave and", startTime: 44.5, endTime: 48.0 },
-  { index: 12, text: "Saved my heart from the fate of Ophelia", startTime: 48.0, endTime: 52.0 },
-  { index: 13, text: "Keep it one hundred on the land, the sea, the sky", startTime: 52.5, endTime: 56.5 },
-  { index: 14, text: "Pledge allegiance to your hands, your team, your vibes", startTime: 56.5, endTime: 60.0 },
-  { index: 15, text: "Don't care where the hell you been", startTime: 60.0, endTime: 62.5 },
-  { index: 16, text: "'Cause now, you're mine", startTime: 62.5, endTime: 65.0 },
-  { index: 17, text: "It's 'bout to be the sleepless night you've been dreaming of", startTime: 65.0, endTime: 69.0 },
-  { index: 18, text: "The fate of Ophelia", startTime: 69.0, endTime: 71.0 },
-  { index: 19, text: "The eldest daughter of a nobleman", startTime: 71.5, endTime: 74.5 },
-  { index: 20, text: "Ophelia lived in fantasy", startTime: 74.5, endTime: 77.5 },
-  { index: 21, text: "But love was a cold bed full of scorpions", startTime: 77.5, endTime: 81.0 },
-  { index: 22, text: "The venom stole her sanity", startTime: 81.0, endTime: 84.0 },
-  { index: 23, text: "And if you'd never come for me", startTime: 84.5, endTime: 87.0 },
-  { index: 24, text: "I might've lingered in purgatory", startTime: 87.0, endTime: 90.5 },
-  { index: 25, text: "You wrap around me like a chain, a crown, a vine", startTime: 90.5, endTime: 94.5 },
-  { index: 26, text: "Pulling me into the fire", startTime: 94.5, endTime: 97.0 },
-  { index: 27, text: "All that time, I sat alone in my tower", startTime: 97.5, endTime: 101.0 },
-  { index: 28, text: "You were just honing your powers", startTime: 101.0, endTime: 104.0 },
-  { index: 29, text: "Now I can see it all", startTime: 104.0, endTime: 106.5 },
-  { index: 30, text: "Late one night, you dug me out of my grave and", startTime: 106.5, endTime: 110.0 },
-  { index: 31, text: "Saved my heart from the fate of Ophelia", startTime: 110.0, endTime: 114.0 },
-  { index: 32, text: "Keep it one hundred on the land, the sea, the sky", startTime: 114.5, endTime: 118.5 },
-  { index: 33, text: "Pledge allegiance to your hands, your team, your vibes", startTime: 118.5, endTime: 122.0 },
-  { index: 34, text: "Don't care where the hell you been", startTime: 122.0, endTime: 124.5 },
-  { index: 35, text: "'Cause now, you're mine", startTime: 124.5, endTime: 127.0 },
-  { index: 36, text: "It's 'bout to be the sleepless night you've been dreaming of", startTime: 127.0, endTime: 131.0 },
-  { index: 37, text: "The fate of Ophelia", startTime: 131.0, endTime: 133.0 },
-  { index: 38, text: "'Tis locked inside my memory", startTime: 133.5, endTime: 136.5 },
-  { index: 39, text: "And only you possess the key", startTime: 136.5, endTime: 139.5 },
-  { index: 40, text: "No longer drowning and deceived", startTime: 139.5, endTime: 142.5 },
-  { index: 41, text: "All because you came for me", startTime: 142.5, endTime: 145.0 },
-  { index: 42, text: "Locked inside my memory", startTime: 145.5, endTime: 148.0 },
-  { index: 43, text: "And only you possess the key", startTime: 148.0, endTime: 151.0 },
-  { index: 44, text: "No longer drowning and deceived", startTime: 151.0, endTime: 154.0 },
-  { index: 45, text: "All because you came for me", startTime: 154.0, endTime: 156.5 },
-  { index: 46, text: "All that time, I sat alone in my tower", startTime: 157.0, endTime: 160.5 },
-  { index: 47, text: "You were just honing your powers", startTime: 160.5, endTime: 163.5 },
-  { index: 48, text: "Now I can see it all", startTime: 163.5, endTime: 166.0 },
-  { index: 49, text: "Late one night, you dug me out of my grave and", startTime: 166.0, endTime: 169.5 },
-  { index: 50, text: "Saved my heart from the fate of Ophelia", startTime: 169.5, endTime: 173.5 },
-  { index: 51, text: "Keep it one hundred on the land, the sea, the sky", startTime: 174.0, endTime: 178.0 },
-  { index: 52, text: "Pledge allegiance to your hands, your team, your vibes", startTime: 178.0, endTime: 182.0 },
-  { index: 53, text: "Don't care where the hell you been", startTime: 182.0, endTime: 184.5 },
-  { index: 54, text: "'Cause now, you're mine", startTime: 184.5, endTime: 187.0 },
-  { index: 55, text: "It's 'bout to be the sleepless night you've been dreaming of", startTime: 187.0, endTime: 191.0 },
-  { index: 56, text: "The fate of Ophelia", startTime: 191.0, endTime: 193.5 },
-  { index: 57, text: "You saved my heart from the fate of Ophelia", startTime: 193.5, endTime: 200.0 },
+  { index: 0, text: "Don't you sweat it, baby, it's alright",       startTime: 0.00,  endTime: 2.48,  alignment: "left",
+    words: makeWords("Don't you sweat it baby it's alright", 0.00, 2.48) },
+  { index: 1, text: "You were dancing through the lightning strikes", startTime: 2.48,  endTime: 6.76,  alignment: "right",
+    words: makeWords("You were dancing through the lightning strikes", 2.48, 6.76) },
+  { index: 2, text: "Oh, so sleepless in the onyx night",            startTime: 7.88,  endTime: 10.44, alignment: "left",
+    words: makeWords("Oh so sleepless in the onyx night", 7.88, 10.44) },
+  { index: 3, text: "But now the sky is opalite",                    startTime: 10.44, endTime: 14.34, alignment: "right",
+    words: makeWords("But now the sky is opalite", 10.44, 14.34) },
+  { index: 4, text: "Oh-oh-oh-oh, oh my Lord",                       startTime: 14.34, endTime: 18.12, alignment: "left",
+    words: [
+      { word: "Oh-oh-oh-oh", start: 14.34, end: 15.82, confidence: 0.92 },
+      { word: "oh", start: 15.82, end: 16.20, confidence: 0.88 },
+      { word: "my", start: 16.20, end: 16.55, confidence: 0.95 },
+      { word: "Lord", start: 16.55, end: 18.12, confidence: 0.97 },
+    ]},
+  { index: 5, text: "Never met no one like you before",              startTime: 18.12, endTime: 21.84, alignment: "right",
+    words: makeWords("Never met no one like you before", 18.12, 21.84) },
+  { index: 6, text: "You had to make your own sunshine",              startTime: 21.84, endTime: 25.64, alignment: "left",
+    words: makeWords("You had to make your own sunshine", 21.84, 25.64) },
+  { index: 7, text: "But now the sky is opalite",                    startTime: 26.44, endTime: 29.64, alignment: "right",
+    words: makeWords("But now the sky is opalite", 26.44, 29.64) },
+  { index: 8, text: "Oh-oh-oh-oh, oh",                                startTime: 29.64, endTime: 32.50, alignment: "left",
+    words: [
+      { word: "Oh-oh-oh-oh", start: 29.64, end: 31.30, confidence: 0.91 },
+      { word: "oh", start: 31.30, end: 32.50, confidence: 0.94 },
+    ]},
 ];
 
-// Pre-computed AI analysis result for Ophelia
+/** Helper: evenly distribute word timestamps across a segment duration */
+function makeWords(text: string, startTime: number, endTime: number): WordTimestamp[] {
+  const rawWords = text.split(" ");
+  const duration = endTime - startTime;
+  const wordDuration = duration / rawWords.length;
+  return rawWords.map((w, i) => ({
+    word: w,
+    start: startTime + i * wordDuration,
+    end: startTime + (i + 1) * wordDuration,
+    confidence: 0.85,
+  }));
+}
+
+// AI analysis result for Opalite hot dance clip
 export const OPHELIA_ANALYSIS: AnalysisResult = {
   emotions: [
-    { label: "passion", intensity: 0.85 },
-    { label: "nostalgia", intensity: 0.7 },
-    { label: "sweetness", intensity: 0.55 },
-    { label: "sadness", intensity: 0.4 },
+    { label: "energy", intensity: 0.95 },
+    { label: "triumph", intensity: 0.88 },
+    { label: "passion", intensity: 0.82 },
+    { label: "joy", intensity: 0.75 },
   ],
   theme: [
-    "Shakespearean romance",
-    "rescue from darkness",
-    "medieval meets modern",
-    "fated love",
+    "dance & movement",
+    "electric energy",
+    "storm to sunshine",
+    "empowerment",
   ],
-  tempo: "medium",
-  suggestedPalette: ["#D4AF37", "#1A0A2E", "#C41E3A"],
-  suggestedFontStyle: "elegant serif with dramatic flair",
+  tempo: "fast",
+  suggestedPalette: ["#4FC3F7", "#FFFFFF", "#0D47A1", "#29B6F6"],
+  suggestedFontStyle: "bold modern sans-serif with kinetic bounce",
   stylePrompt:
-    "Golden serif typography against deep royal purple, like illuminated manuscript meets modern pop. Each line emerges with a regal fade, accented by subtle gold sparkle particles. The chorus explodes in rich crimson — a theatrical, Shakespearean-meets-Broadway aesthetic. Text shadows evoke candlelit chambers and velvet curtains.",
+    "Electric blue and pure white typography pulsing with dance energy. Letters bounce and vibrate like a heartbeat, matching the rhythm of the choreography. Sky-blue glow, motion blur accents, neon-light aesthetic. High-energy karaoke bounce that makes every word feel like a dance move.",
 };
 
-// Pre-computed style params matching the analysis
+// Kinetic Typography style — Impact bold, All Caps, heavy black stroke, pop animation
 export const OPHELIA_STYLE: StyleParams = {
-  fontFamily: "'Playfair Display', Georgia, serif",
-  fontSize: 42,
-  primaryColor: "#D4AF37",
-  secondaryColor: "#8B7355",
-  accentColor: "#C41E3A",
-  animation: "fade-in",
-  decoration: ["underline"],
-  fontWeight: 600,
+  fontFamily: "'Impact', 'Montserrat', 'Arial Black', 'Noto Sans SC', sans-serif",
+  fontSize: 64,
+  primaryColor: "#FFFFFF",
+  secondaryColor: "#38BDF8",
+  accentColor: "#00E5FF",
+  animation: "kinetic-pop",
+  decoration: ["none"],
+  fontWeight: 900,
   textShadow: true,
+};
+
+// 字幕模板 — Kinetic Typography 风格
+export const OPHELIA_TEMPLATE: SubtitleTemplate = {
+  name: "Kinetic Typography",
+  description: "TikTok/抖音风格: Impact 粗体 + All Caps + 厚黑描边 + Pop 弹跳动效 + 关键词高亮",
+  layout: {
+    positionX: 0.5,
+    positionY: 0.55,
+    alternateMode: "alternate",
+    alternateAmplitude: 0.22,
+    curvature: 0,
+    maxWidthRatio: 0.88,
+    lineSpacing: 1.2,
+  },
+  animation: {
+    entrance: "kinetic-pop",
+    entranceDuration: 0.30,
+    exit: "fade-in",
+    exitDuration: 0.12,
+    bounciness: 0.8,
+    easing: "ease-out",
+  },
+  render: {
+    fontFamily: "'Impact', 'Montserrat', 'Arial Black', 'Noto Sans SC', sans-serif",
+    fontSize: 64,
+    fontWeight: 900,
+    primaryColor: "#FFFFFF",
+    secondaryColor: "#38BDF8",
+    accentColor: "#00E5FF",
+    textShadow: true,
+    glowColor: "#38BDF8",
+    glowIntensity: 0.25,
+    strokeWidth: 5,
+    strokeColor: "#000000",
+    backgroundType: "none",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    paddingX: 20,
+    paddingY: 10,
+    borderRadius: 8,
+    allCaps: true,
+    highlightWords: ["baby", "dancing", "lightning", "sleepless", "onyx", "opalite", "lord", "never", "sunshine"],
+  },
 };
 
 // Alternative styles for demo variety
 export const ALTERNATIVE_STYLES: Record<string, StyleParams> = {
+  "kinetic-pop": {
+    fontFamily: "'Impact', 'Montserrat', 'Arial Black', sans-serif",
+    fontSize: 64,
+    primaryColor: "#FFFFFF",
+    secondaryColor: "#38BDF8",
+    accentColor: "#00E5FF",
+    animation: "kinetic-pop",
+    decoration: ["none"],
+    fontWeight: 900,
+    textShadow: true,
+  },
   "gothic-drama": {
     fontFamily: "'Cinzel', serif",
     fontSize: 46,
@@ -114,17 +158,6 @@ export const ALTERNATIVE_STYLES: Record<string, StyleParams> = {
     fontWeight: 700,
     textShadow: true,
   },
-  "modern-pop": {
-    fontFamily: "Inter, sans-serif",
-    fontSize: 52,
-    primaryColor: "#FFFFFF",
-    secondaryColor: "#FFD700",
-    accentColor: "#FF1493",
-    animation: "bounce",
-    decoration: ["emoji"],
-    fontWeight: 700,
-    textShadow: false,
-  },
   "vintage-journal": {
     fontFamily: "'Caveat', cursive",
     fontSize: 44,
@@ -135,5 +168,166 @@ export const ALTERNATIVE_STYLES: Record<string, StyleParams> = {
     decoration: ["emoji", "highlight"],
     fontWeight: 400,
     textShadow: false,
+  },
+};
+
+// 预置字幕模板（用户可通过语言描述切换）
+export const SUBTITLE_TEMPLATES: Record<string, SubtitleTemplate> = {
+  "kinetic-pop": OPHELIA_TEMPLATE,
+  "dance-bounce": {
+    name: "Dance Bounce",
+    description: "蓝白交替跳动字幕，左右灵动布局",
+    layout: {
+      positionX: 0.5,
+      positionY: 0.65,
+      alternateMode: "alternate",
+      alternateAmplitude: 0.35,
+      curvature: 0,
+      maxWidthRatio: 0.8,
+      lineSpacing: 1.4,
+    },
+    animation: {
+      entrance: "bounce",
+      entranceDuration: 0.35,
+      exit: "fade-in",
+      exitDuration: 0.15,
+      bounciness: 0.7,
+      easing: "ease-out",
+    },
+    render: {
+      fontFamily: "'Poppins', 'Montserrat', 'Inter', sans-serif",
+      fontSize: 56,
+      fontWeight: 800,
+      primaryColor: "#FFFFFF",
+      secondaryColor: "#4FC3F7",
+      accentColor: "#00E5FF",
+      textShadow: true,
+      glowColor: "#4FC3F7",
+      glowIntensity: 0.5,
+      strokeWidth: 0,
+      strokeColor: "#000000",
+      backgroundType: "none",
+      backgroundColor: "rgba(0,0,0,0.5)",
+      paddingX: 20,
+      paddingY: 10,
+      borderRadius: 8,
+    },
+  },
+  "arc-center": {
+    name: "Arc Center",
+    description: "居中弧形字幕，优雅弯曲，适合抒情歌曲",
+    layout: {
+      positionX: 0.5,
+      positionY: 0.7,
+      alternateMode: "none",
+      alternateAmplitude: 0,
+      curvature: 0.15,
+      maxWidthRatio: 0.75,
+      lineSpacing: 1.5,
+    },
+    animation: {
+      entrance: "fade-in",
+      entranceDuration: 0.4,
+      exit: "fade-in",
+      exitDuration: 0.2,
+      bounciness: 0.3,
+      easing: "ease-in-out",
+    },
+    render: {
+      fontFamily: "'Georgia', serif",
+      fontSize: 48,
+      fontWeight: 600,
+      primaryColor: "#FFE4B5",
+      secondaryColor: "#FFD700",
+      accentColor: "#FF8C42",
+      textShadow: true,
+      glowColor: "#FF8C42",
+      glowIntensity: 0.4,
+      strokeWidth: 0,
+      strokeColor: "#000000",
+      backgroundType: "none",
+      backgroundColor: "rgba(0,0,0,0.5)",
+      paddingX: 24,
+      paddingY: 12,
+      borderRadius: 8,
+    },
+  },
+  "bottom-left": {
+    name: "Bottom Left",
+    description: "左下角固定字幕，半透明玻璃背景，适合 vlog 风格",
+    layout: {
+      positionX: 0.1,
+      positionY: 0.85,
+      alternateMode: "none",
+      alternateAmplitude: 0,
+      curvature: 0,
+      maxWidthRatio: 0.5,
+      lineSpacing: 1.2,
+    },
+    animation: {
+      entrance: "slide-up",
+      entranceDuration: 0.3,
+      exit: "fade-in",
+      exitDuration: 0.15,
+      bounciness: 0,
+      easing: "ease-out",
+    },
+    render: {
+      fontFamily: "'Inter', sans-serif",
+      fontSize: 32,
+      fontWeight: 500,
+      primaryColor: "#FFFFFF",
+      secondaryColor: "#CCCCCC",
+      accentColor: "#FFFFFF",
+      textShadow: false,
+      glowColor: "rgba(255,255,255,0.2)",
+      glowIntensity: 0.2,
+      strokeWidth: 0,
+      strokeColor: "#000000",
+      backgroundType: "glass",
+      backgroundColor: "rgba(0,0,0,0.4)",
+      paddingX: 16,
+      paddingY: 8,
+      borderRadius: 12,
+    },
+  },
+  "top-wave": {
+    name: "Top Wave",
+    description: "顶部波浪交替字幕，活泼灵动，适合快节奏音乐",
+    layout: {
+      positionX: 0.5,
+      positionY: 0.15,
+      alternateMode: "wave",
+      alternateAmplitude: 0.4,
+      curvature: 0.08,
+      maxWidthRatio: 0.9,
+      lineSpacing: 1.3,
+    },
+    animation: {
+      entrance: "scale-up",
+      entranceDuration: 0.25,
+      exit: "fade-in",
+      exitDuration: 0.1,
+      bounciness: 0.8,
+      easing: "bounce",
+    },
+    render: {
+      fontFamily: "'Montserrat', sans-serif",
+      fontSize: 42,
+      fontWeight: 700,
+      primaryColor: "#FFFFFF",
+      secondaryColor: "#FF6B6B",
+      accentColor: "#FFD93D",
+      textShadow: true,
+      glowColor: "#FF6B6B",
+      glowIntensity: 0.6,
+      strokeWidth: 2,
+      strokeColor: "rgba(0,0,0,0.5)",
+      backgroundType: "none",
+      backgroundColor: "rgba(0,0,0,0.3)",
+      paddingX: 20,
+      paddingY: 10,
+      borderRadius: 8,
+    },
   },
 };

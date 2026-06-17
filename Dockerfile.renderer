@@ -1,0 +1,51 @@
+# LyricVibe Render Server - 精简版
+# 只包含渲染服务，不含 Next.js 前端
+FROM node:20-slim
+
+# 安装 Chromium 及依赖
+RUN apt-get update && apt-get install -y \
+    chromium \
+    chromium-sandbox \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdrm2 \
+    libgbm1 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    xdg-utils \
+    fonts-noto-color-emoji \
+    fonts-noto-cjk \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+WORKDIR /app
+
+# 复制项目文件
+COPY package.json package-lock.json ./
+RUN npm config set registry https://registry.npmmirror.com && npm ci
+
+COPY tsconfig.json ./
+COPY next.config.ts ./
+COPY postcss.config.mjs ./
+COPY src/ ./src/
+
+# 安装 render-server 依赖
+COPY render-server/package.json ./render-server/
+WORKDIR /app/render-server
+RUN npm config set registry https://registry.npmmirror.com && npm install
+
+COPY render-server/index.js ./
+
+WORKDIR /app
+
+EXPOSE 3000
+CMD ["node", "render-server/index.js"]

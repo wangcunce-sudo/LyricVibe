@@ -4,39 +4,85 @@
  * This is the video definition that Remotion renders into MP4.
  * It recreates the lyric subtitle overlay with full animation control.
  *
+ * Uses SubtitleComposition internally to ensure 100% consistency
+ * between frontend preview (@remotion/player) and backend SSR render.
+ *
  * To render locally:
  *   npx remotion render src/lib/remotion/index.ts LyricVibeVideo out.mp4
  */
 
 import React from "react";
-import { useCurrentFrame, useVideoConfig, AbsoluteFill } from "remotion";
-import type { LyricLine, StyleParams, FilterType } from "@/lib/types";
-import { FILTER_PRESETS } from "@/lib/types";
+import {
+  useCurrentFrame,
+  useVideoConfig,
+  AbsoluteFill,
+  Audio,
+  OffthreadVideo,
+  staticFile,
+  getInputProps,
+} from "remotion";
+import { logger } from "../logger";
+import type { LyricLine, StyleParams, FilterType, SubtitleTemplate } from "../types";
+import { FILTER_PRESETS, styleParamsToTemplate } from "../types";
+import { SubtitleComposition } from "./SubtitleComposition";
 
 interface CompositionProps {
   videoUrl?: string;
+  audioUrl?: string;
   lyrics: LyricLine[];
   styleParams: StyleParams;
   filter: FilterType;
   fps: number;
+  speed?: number;
+  pitch?: number;
+  subtitleTemplate?: SubtitleTemplate;
 }
 
-export const LyricVibeComposition: React.FC<CompositionProps> = ({
-  videoUrl,
-  lyrics,
-  styleParams,
-  filter,
-  fps,
-}) => {
+export const LyricVibeComposition: React.FC<CompositionProps> = (props) => {
+  const inputPropsFromRemotion = getInputProps() as Partial<CompositionProps> | undefined;
+
+  const videoUrl = props.videoUrl ?? inputPropsFromRemotion?.videoUrl;
+  const audioUrl = props.audioUrl ?? inputPropsFromRemotion?.audioUrl;
+  const lyrics = (props.lyrics?.length ? props.lyrics : inputPropsFromRemotion?.lyrics) || [];
+  const styleParams = (props.styleParams ?? inputPropsFromRemotion?.styleParams) || {
+    fontFamily: "sans-serif",
+    fontSize: 56,
+    primaryColor: "#ffffff",
+    secondaryColor: "#cccccc",
+    accentColor: "#ff6b6b",
+    animation: "bounce" as const,
+    decoration: ["emoji"] as string[],
+    fontWeight: 700,
+    textShadow: true,
+  };
+  const filter = (props.filter ?? inputPropsFromRemotion?.filter) || "original";
+  const fps = props.fps ?? inputPropsFromRemotion?.fps ?? 30;
+  const speed = props.speed ?? inputPropsFromRemotion?.speed ?? 1;
+  const pitch = props.pitch ?? inputPropsFromRemotion?.pitch ?? 0;
+  const subtitleTemplate = props.subtitleTemplate ?? inputPropsFromRemotion?.subtitleTemplate;
+
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
 
-  const currentTimeSec = frame / fps;
+  if (frame === 0) {
+    logger.info("Composition", "========== RECEIVED PROPS ==========");
+    logger.info("Composition", "styleParams:", JSON.stringify(styleParams, null, 2));
+    logger.info("Composition", "filter:", filter);
+    logger.info("Composition", "speed:", speed);
+    logger.info("Composition", "subtitleTemplate present:", !!subtitleTemplate);
+    logger.info("Composition", "lyrics count:", lyrics?.length || 0);
+    logger.info("Composition", "videoUrl:", videoUrl);
+    logger.info("Composition", "audioUrl:", audioUrl);
+    logger.info("Composition", "=====================================");
+  }
+
+  // Apply speed: time passes faster with higher speed
+  const currentTimeSec = (frame / fps) * speed;
 
   // Find current lyric line
   const currentLine = lyrics.find(
     (l) => currentTimeSec >= l.startTime && currentTimeSec < l.endTime
-  );
+  ) || null;
 
   const progress = currentLine
     ? (currentTimeSec - currentLine.startTime) /
@@ -44,6 +90,19 @@ export const LyricVibeComposition: React.FC<CompositionProps> = ({
     : 0;
 
   const filterStyle = FILTER_PRESETS[filter] || "none";
+
+  // Resolve asset URLs
+  const resolvedVideoSrc = videoUrl
+    ? videoUrl.startsWith("http") || videoUrl.startsWith("/")
+      ? videoUrl
+      : staticFile(videoUrl)
+    : undefined;
+
+  const resolvedAudioSrc = audioUrl
+    ? audioUrl.startsWith("http") || audioUrl.startsWith("/")
+      ? audioUrl
+      : staticFile(audioUrl)
+    : undefined;
 
   return (
     <AbsoluteFill
@@ -53,167 +112,45 @@ export const LyricVibeComposition: React.FC<CompositionProps> = ({
       }}
     >
       {/* Background video */}
-      {videoUrl && (
-        <video
-          src={videoUrl}
+      {resolvedVideoSrc && (
+        <OffthreadVideo
+          src={resolvedVideoSrc}
           style={{
             position: "absolute",
             width: "100%",
             height: "100%",
             objectFit: "cover",
           }}
+          playbackRate={speed}
+          muted
         />
       )}
 
-      {/* Lyric subtitle overlay */}
+      {/* Audio track */}
+      {resolvedAudioSrc && <Audio src={resolvedAudioSrc} />}
+
+      {/* Lyric subtitle overlay — uses shared SubtitleComposition */}
       <AbsoluteFill
         style={{
           display: "flex",
-          alignItems: "flex-end",
+          flexDirection: "column",
           justifyContent: "center",
-          paddingBottom: height * 0.15,
+          padding: `${height * 0.05}px ${width * 0.08}px`,
+          pointerEvents: "none",
+          overflow: "hidden",
         }}
       >
-        {currentLine && (
-          <LyricText
-            text={currentLine.text}
-            progress={progress}
-            styleParams={styleParams}
-            frame={frame}
-          />
-        )}
+        <SubtitleComposition
+          currentLine={currentLine}
+          progress={progress}
+          styleParams={styleParams}
+          subtitleTemplate={subtitleTemplate}
+          totalLines={lyrics.length}
+          width={width}
+          height={height}
+          speed={speed}
+        />
       </AbsoluteFill>
     </AbsoluteFill>
   );
-};
-
-// ============================================================
-// Lyric text with animation
-// ============================================================
-
-const LyricText: React.FC<{
-  text: string;
-  progress: number;
-  styleParams: StyleParams;
-  frame: number;
-}> = ({ text, progress, styleParams, frame }) => {
-  const {
-    fontFamily,
-    fontSize,
-    primaryColor,
-    secondaryColor,
-    accentColor,
-    animation,
-    fontWeight,
-    textShadow,
-  } = styleParams;
-
-  const clampedProgress = Math.max(0, Math.min(1, progress));
-
-  // Animation styles
-  let animStyle: React.CSSProperties = {};
-
-  switch (animation) {
-    case "fade-in":
-      animStyle = {
-        opacity: Math.min(1, clampedProgress * 2),
-        transform: `translateY(${(1 - clampedProgress) * 10}px)`,
-      };
-      break;
-    case "slide-up":
-      animStyle = {
-        opacity: Math.min(1, clampedProgress * 2),
-        transform: `translateY(${(1 - clampedProgress) * 30}px)`,
-      };
-      break;
-    case "bounce":
-      const bounceScale = 1 + Math.sin(clampedProgress * Math.PI) * 0.05;
-      animStyle = {
-        opacity: Math.min(1, clampedProgress * 2),
-        transform: `scale(${bounceScale})`,
-      };
-      break;
-    case "scale-up":
-      animStyle = {
-        opacity: Math.min(1, clampedProgress * 1.5),
-        transform: `scale(${0.8 + clampedProgress * 0.3})`,
-      };
-      break;
-    case "typewriter":
-      const visibleChars = Math.floor(text.length * clampedProgress);
-      // For typewriter, we'd need to slice the text — handled in the variant below
-      break;
-    case "karaoke":
-      // Karaoke uses a different rendering approach
-      break;
-  }
-
-  const baseStyle: React.CSSProperties = {
-    fontFamily,
-    fontSize: `${fontSize}px`,
-    fontWeight,
-    color: primaryColor,
-    textAlign: "center",
-    textShadow: textShadow
-      ? "2px 2px 8px rgba(0,0,0,0.7), 0 0 20px rgba(0,0,0,0.3)"
-      : "1px 1px 4px rgba(0,0,0,0.5)",
-    lineHeight: 1.3,
-    padding: "0 40px",
-    maxWidth: "90%",
-    ...animStyle,
-  };
-
-  // Karaoke style: gradient reveal
-  if (animation === "karaoke") {
-    return (
-      <div style={{ position: "relative", display: "inline-block" }}>
-        <span
-          style={{
-            ...baseStyle,
-            color: secondaryColor,
-            opacity: 0.4,
-          }}
-        >
-          {text}
-        </span>
-        <span
-          style={{
-            ...baseStyle,
-            position: "absolute",
-            left: 0,
-            top: 0,
-            width: `${clampedProgress * 100}%`,
-            overflow: "hidden",
-            whiteSpace: "nowrap",
-            color: accentColor,
-            opacity: 1,
-          }}
-        >
-          {text}
-        </span>
-      </div>
-    );
-  }
-
-  // Typewriter style
-  if (animation === "typewriter") {
-    const visibleChars = Math.floor(text.length * clampedProgress);
-    return (
-      <span style={baseStyle}>
-        {text.slice(0, visibleChars)}
-        {clampedProgress < 1 && (
-          <span
-            style={{
-              opacity: Math.floor(frame / 15) % 2 ? 1 : 0,
-              color: accentColor,
-            }}
-          >
-            |
-          </span>
-        )}
-      </span>
-    );
-  }
-
-  return <span style={baseStyle}>{text}</span>;
 };

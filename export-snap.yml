@@ -1,0 +1,102 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "返回" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - img [ref=e6]
+          - generic [ref=e8]: 返回
+        - heading "LyricVibe" [level=1] [ref=e9]:
+          - img [ref=e10]
+          - text: LyricVibe
+        - generic [ref=e56]: 演示模式
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - button "中文" [ref=e16]
+          - button "EN" [ref=e17]
+        - button "导出中... 87%" [disabled] [ref=e262]:
+          - img [ref=e244]
+          - text: 导出中... 87%
+    - generic [ref=e26]:
+      - generic [ref=e57]:
+        - generic [ref=e58]:
+          - button [ref=e60]:
+            - img [ref=e62]
+          - generic: 空格暂停 · ←→ 快进快退
+        - generic [ref=e64]:
+          - button "播放" [ref=e65]:
+            - img [ref=e66]
+          - generic [ref=e68]: 0:00 / 0:32
+          - button "1x" [ref=e72]:
+            - img [ref=e73]
+            - generic [ref=e76]: 1x
+          - button "静音" [ref=e77]:
+            - img [ref=e78]
+      - generic [ref=e83]:
+        - generic [ref=e84]:
+          - button "风格" [ref=e85]:
+            - img [ref=e86]
+            - text: 风格
+          - button "滤镜" [ref=e89]:
+            - img [ref=e90]
+            - text: 滤镜
+          - button "音频" [ref=e96]:
+            - img [ref=e97]
+            - text: 音频
+          - button "高级" [ref=e101]:
+            - img [ref=e102]
+            - text: 高级
+        - generic [ref=e202]:
+          - generic [ref=e203]:
+            - generic [ref=e204]:
+              - generic [ref=e205]: 字号
+              - generic [ref=e206]: 56px
+            - slider [ref=e207] [cursor=pointer]: "56"
+          - generic [ref=e208]:
+            - generic [ref=e209]:
+              - generic [ref=e210]: 字重
+              - generic [ref=e211]: "800"
+            - slider [ref=e212] [cursor=pointer]: "800"
+          - generic [ref=e213]:
+            - text: 动画
+            - generic [ref=e214]:
+              - button "淡入" [ref=e215]
+              - button "卡拉OK" [ref=e216]
+              - button "打字机" [ref=e217]
+              - button "弹跳" [ref=e218]
+              - button "放大" [ref=e219]
+              - button "上滑" [ref=e220]
+          - generic [ref=e221]:
+            - text: 装饰
+            - generic [ref=e222]:
+              - button "无" [ref=e223]
+              - button "下划线" [ref=e224]
+              - button "高亮" [ref=e225]
+              - button "边框" [ref=e226]
+              - button "表情" [ref=e227]
+          - generic [ref=e228]:
+            - generic [ref=e229]: 文字阴影
+            - button [ref=e230]
+          - generic [ref=e232]:
+            - text: 颜色
+            - generic [ref=e233]:
+              - generic [ref=e234]:
+                - textbox [ref=e235] [cursor=pointer]: "#ffffff"
+                - generic [ref=e236]: primary
+              - generic [ref=e237]:
+                - textbox [ref=e238] [cursor=pointer]: "#4fc3f7"
+                - generic [ref=e239]: secondary
+              - generic [ref=e240]:
+                - textbox [ref=e241] [cursor=pointer]: "#00e5ff"
+                - generic [ref=e242]: accent
+    - generic [ref=e247]:
+      - img [ref=e249]
+      - heading "正在渲染视频..." [level=2] [ref=e251]
+      - paragraph [ref=e252]: 正在合成视频画面、音频轨道和字幕效果，请勿关闭页面
+      - paragraph [ref=e255]: 87%
+      - generic [ref=e256]:
+        - generic [ref=e257]: 分析歌词
+        - generic [ref=e258]: 合成画面
+        - generic [ref=e259]: 渲染字幕
+        - generic [ref=e260]: 编码输出
+  - alert [ref=e55]

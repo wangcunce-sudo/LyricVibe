@@ -1,16 +1,20 @@
 "use client";
 
-import { useRef, useEffect, useCallback, useState } from "react";
-import { Play, Pause, SkipBack, SkipForward } from "lucide-react";
+import { useRef, useEffect, useCallback, useState, useMemo } from "react";
+import { Play, Pause, Volume2, VolumeX, Gauge, Loader2, RefreshCw } from "lucide-react";
 import { cn, formatTime } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 import type {
   LyricLine,
   StyleParams,
   FilterType,
-  AnimationType,
   AspectRatio,
+  SubtitleTemplate,
 } from "@/lib/types";
-import { FILTER_PRESETS } from "@/lib/types";
+import { FILTER_PRESETS, styleParamsToTemplate } from "@/lib/types";
+import { toneEngine } from "@/lib/tone-engine";
+import { Player } from "@remotion/player";
+import { SubtitleComposition } from "@/lib/remotion/SubtitleComposition";
 
 interface VideoPreviewProps {
   videoUrl?: string;
@@ -25,7 +29,12 @@ interface VideoPreviewProps {
   onTimeUpdate: (time: number) => void;
   isPlaying: boolean;
   onPlayPause: () => void;
+  subtitleTemplate?: SubtitleTemplate;
 }
+
+const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const SEEK_THRESHOLD_SEC = 0.3;
+const FPS = 30;
 
 export function VideoPreview({
   videoUrl,
@@ -40,148 +49,258 @@ export function VideoPreview({
   onTimeUpdate,
   isPlaying,
   onPlayPause,
+  subtitleTemplate,
 }: VideoPreviewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animFrameRef = useRef<number>(0);
   const [duration, setDuration] = useState(0);
+  const [audioLoaded, setAudioLoaded] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  const [localSpeed, setLocalSpeed] = useState(speed);
+  const [engineReady, setEngineReady] = useState(false);
+  const audioInitializedRef = useRef(false);
 
-  // Sync video and audio playback
+  const hasVideo = !!videoUrl;
+
+  // ── Merge styleParams into subtitleTemplate ──
+  const template = useMemo(() => {
+    const base = subtitleTemplate || styleParamsToTemplate(styleParams);
+    return {
+      ...base,
+      render: {
+        ...base.render,
+        fontFamily: styleParams.fontFamily,
+        fontSize: styleParams.fontSize,
+        fontWeight: styleParams.fontWeight,
+        primaryColor: styleParams.primaryColor,
+        secondaryColor: styleParams.secondaryColor,
+        accentColor: styleParams.accentColor,
+        textShadow: styleParams.textShadow,
+      },
+      animation: {
+        ...base.animation,
+        entrance: styleParams.animation,
+      },
+    };
+  }, [subtitleTemplate, styleParams]);
+
+  // ── Find current lyric line and progress ──
+  const currentLine = lyrics.find(
+    (l) => currentTime >= l.startTime && currentTime < l.endTime
+  ) || null;
+
+  const progress = currentLine
+    ? (currentTime - currentLine.startTime) /
+      (currentLine.endTime - currentLine.startTime)
+    : 0;
+
+  // ── Calculate current frame from currentTime ──
+  const currentFrame = Math.floor(currentTime * FPS);
+
+  // ── Calculate total duration in frames ──
+  const durationInFrames = useMemo(() => {
+    if (lyrics.length === 0) return 30 * FPS;
+    const lastLine = lyrics[lyrics.length - 1];
+    return Math.ceil((lastLine.endTime + 1) * FPS);
+  }, [lyrics]);
+
+  // ── Clamp inFrame to avoid Player error (must be < durationInFrames) ──
+  const safeFrame = Math.max(0, Math.min(currentFrame, Math.max(1, durationInFrames) - 1));
+
+  // ── Tone.js audio engine setup ──
   useEffect(() => {
-    const audio = audioRef.current;
-    const video = videoRef.current;
-    if (!audio) return;
+    if (!audioUrl) return;
 
-    audio.playbackRate = speed;
+    let cancelled = false;
+    setAudioLoaded(false);
+    setEngineReady(false);
+    audioInitializedRef.current = false;
+
+    const init = async () => {
+      try {
+        await toneEngine.load(audioUrl);
+        if (cancelled) return;
+        setDuration(toneEngine.duration);
+        setAudioLoaded(true);
+        setEngineReady(true);
+        audioInitializedRef.current = true;
+      } catch (err) {
+        logger.warn("VideoPreview", "Tone.js engine load failed:", err);
+        setAudioLoaded(true);
+        setEngineReady(false);
+      }
+    };
+
+    toneEngine.setCallbacks({
+      onTimeUpdate: (time: number) => {
+        onTimeUpdate(time);
+      },
+      onEnded: () => {
+        onPlayPause();
+      },
+      onStateChange: () => {},
+    });
+
+    init();
+
+    return () => {
+      cancelled = true;
+      toneEngine.pause();
+      toneEngine.setCallbacks({});
+    };
+  }, [audioUrl]);
+
+  // ── Video element setup ──
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !videoUrl) {
+      setVideoReady(true);
+      return;
+    }
+
+    setVideoReady(false);
+
+    const onLoaded = () => {
+      setVideoReady(true);
+    };
+
+    video.addEventListener("loadeddata", onLoaded);
+    video.src = videoUrl;
+    video.load();
+
+    return () => {
+      video.removeEventListener("loadeddata", onLoaded);
+    };
+  }, [videoUrl]);
+
+  // ── Sync speed from props ──
+  useEffect(() => {
+    setLocalSpeed(speed);
+  }, [speed]);
+
+  // ── Apply speed & pitch to Tone.js engine ──
+  useEffect(() => {
+    if (!audioInitializedRef.current) return;
+    toneEngine.setSpeed(localSpeed);
+  }, [localSpeed]);
+
+  useEffect(() => {
+    if (!audioInitializedRef.current) return;
+    toneEngine.setPitch(pitch);
+  }, [pitch]);
+
+  // ── Apply speed to video element ──
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = localSpeed;
+  }, [localSpeed]);
+
+  // ── Handle play/pause ──
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!audioInitializedRef.current) return;
 
     if (isPlaying) {
-      audio.play().catch(() => {});
-      if (video && videoUrl) video.play().catch(() => {});
-    } else {
-      audio.pause();
-      if (video && videoUrl) video.pause();
-    }
-  }, [isPlaying, speed, videoUrl]);
-
-  // Sync currentTime between audio and video
-  useEffect(() => {
-    const audio = audioRef.current;
-    const video = videoRef.current;
-    if (!audio) return;
-
-    const diff = Math.abs(audio.currentTime - currentTime);
-    if (diff > 0.3) {
-      audio.currentTime = currentTime;
-      if (video && videoUrl) video.currentTime = currentTime;
-    }
-  }, [currentTime, videoUrl]);
-
-  // Time update loop
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const onTimeUpdateHandler = () => {
-      onTimeUpdate(audio.currentTime);
-    };
-
-    const onLoadedMetadata = () => {
-      setDuration(audio.duration);
-    };
-
-    audio.addEventListener("timeupdate", onTimeUpdateHandler);
-    audio.addEventListener("loadedmetadata", onLoadedMetadata);
-    audio.addEventListener("ended", () => onPlayPause());
-
-    return () => {
-      audio.removeEventListener("timeupdate", onTimeUpdateHandler);
-      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
-      audio.removeEventListener("ended", () => onPlayPause());
-    };
-  }, [onTimeUpdate, onPlayPause]);
-
-  // Render lyrics subtitle on canvas overlay
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const render = () => {
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.clearRect(0, 0, w, h);
-
-      // Find current lyric line
-      const currentLine = lyrics.find(
-        (l) => currentTime >= l.startTime && currentTime < l.endTime
-      );
-
-      if (currentLine) {
-        const progress =
-          (currentTime - currentLine.startTime) /
-          (currentLine.endTime - currentLine.startTime);
-
-        drawLyricLine(ctx, currentLine, progress, styleParams, w, h);
+      toneEngine.play();
+      if (video && hasVideo) {
+        video.currentTime = toneEngine.currentTime;
+        video.play().catch((e) => logger.warn("VideoPreview", "Video play failed:", e));
       }
+    } else {
+      toneEngine.pause();
+      if (video && hasVideo) video.pause();
+    }
+  }, [isPlaying, hasVideo]);
 
-      animFrameRef.current = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      cancelAnimationFrame(animFrameRef.current);
-    };
-  }, [lyrics, currentTime, styleParams]);
-
-  // Set canvas size
+  // ── Sync currentTime (seek) ──
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const video = videoRef.current;
+    if (!audioInitializedRef.current) return;
+    const diff = Math.abs(toneEngine.currentTime - currentTime);
+    if (diff > SEEK_THRESHOLD_SEC) {
+      toneEngine.seek(currentTime);
+      if (video && hasVideo) video.currentTime = currentTime;
+    }
+  }, [currentTime, hasVideo]);
 
-    const resize = () => {
-      const parent = canvas.parentElement;
-      if (!parent) return;
-      canvas.width = parent.clientWidth;
-      canvas.height = parent.clientHeight;
+  // ── Mute control ──
+  useEffect(() => {
+    if (audioInitializedRef.current) {
+      toneEngine.setVolume(muted ? 0 : 1);
+    }
+    if (videoRef.current) videoRef.current.muted = true;
+  }, [muted]);
+
+  // ── Seek handler ──
+  const handleSeek = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const ratio = x / rect.width;
+      const newTime = ratio * duration;
+      onTimeUpdate(newTime);
+      toneEngine.seek(newTime);
+      if (videoRef.current && hasVideo)
+        videoRef.current.currentTime = newTime;
+    },
+    [duration, hasVideo, onTimeUpdate]
+  );
+
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.code === "Space") {
+        e.preventDefault();
+        onPlayPause();
+      }
+      if (e.code === "ArrowRight") {
+        const newTime = Math.min(currentTime + 5, duration);
+        onTimeUpdate(newTime);
+        toneEngine.seek(newTime);
+      }
+      if (e.code === "ArrowLeft") {
+        const newTime = Math.max(currentTime - 5, 0);
+        onTimeUpdate(newTime);
+        toneEngine.seek(newTime);
+      }
     };
-
-    resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, []);
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [currentTime, duration, onPlayPause, onTimeUpdate]);
 
   const aspectClass =
     aspectRatio === "9:16"
       ? "aspect-[9/16]"
       : aspectRatio === "1:1"
-      ? "aspect-square"
-      : aspectRatio === "4:5"
-      ? "aspect-[4/5]"
-      : "aspect-video";
+        ? "aspect-square"
+        : aspectRatio === "4:5"
+          ? "aspect-[4/5]"
+          : "aspect-video";
+
+  // Player composition dimensions
+  const compWidth = 1920;
+  const compHeight = 1080;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 w-full">
       {/* Preview container */}
       <div
         className={cn(
-          "relative bg-black rounded-lg overflow-hidden mx-auto max-w-full",
+          "relative bg-black rounded-lg overflow-hidden mx-auto max-w-full group",
           aspectClass
         )}
         style={{ maxHeight: "60vh" }}
       >
-        {/* Background video or solid color */}
-        {videoUrl ? (
+        {/* Background video or gradient */}
+        {hasVideo ? (
           <video
             ref={videoRef}
-            src={videoUrl}
             className="absolute inset-0 w-full h-full object-cover"
             style={{ filter: FILTER_PRESETS[filter] }}
             playsInline
             muted
+            preload="auto"
           />
         ) : (
           <div
@@ -192,256 +311,195 @@ export function VideoPreview({
           />
         )}
 
-        {/* Subtitle canvas overlay */}
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full z-10"
-        />
+        {/* ── Remotion Player 字幕层 ──
+            替代原来的 Canvas，100% 还原 Remotion 渲染效果 */}
+        <div className="absolute inset-0 z-10 pointer-events-none">
+          <Player
+            component={SubtitleComposition}
+            inputProps={{
+              currentLine,
+              progress,
+              styleParams,
+              subtitleTemplate: template,
+              totalLines: lyrics.length,
+              width: compWidth,
+              height: compHeight,
+              speed,
+            }}
+            durationInFrames={Math.max(1, durationInFrames)}
+            fps={FPS}
+            compositionWidth={compWidth}
+            compositionHeight={compHeight}
+            style={{
+              width: "100%",
+              height: "100%",
+              background: "transparent",
+            }}
+            controls={false}
+            loop={false}
+            // Manually seek to current frame (synced with Tone.js audio)
+            // Clamped to avoid "inFrame must be < durationInFrames" error
+            inFrame={safeFrame}
+            initiallyMuted
+            showPosterWhenPaused={false}
+            showPosterWhenEnded={false}
+          />
+        </div>
 
-        {/* Audio element (hidden) */}
-        <audio ref={audioRef} src={audioUrl} preload="auto" />
+        {/* Loading overlay */}
+        {!audioLoaded && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20">
+            <div className="text-white text-sm flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              加载音频引擎...
+            </div>
+          </div>
+        )}
+
+        {/* Center play/pause button */}
+        {audioLoaded && (
+          <button
+            onClick={onPlayPause}
+            className={cn(
+              "absolute inset-0 flex items-center justify-center bg-black/20 z-20 transition-opacity",
+              isPlaying ? "opacity-0 hover:opacity-100" : "opacity-100 hover:bg-black/30"
+            )}
+          >
+            <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur flex items-center justify-center hover:scale-110 transition-transform">
+              {isPlaying ? (
+                <Pause className="w-8 h-8 text-white" />
+              ) : (
+                <Play className="w-8 h-8 text-white ml-1" />
+              )}
+            </div>
+          </button>
+        )}
+
+        {/* Refresh button */}
+        {audioLoaded && (
+          <button
+            onClick={() => {
+              toneEngine.dispose();
+              setAudioLoaded(false);
+              setEngineReady(false);
+              audioInitializedRef.current = false;
+              toneEngine.setCallbacks({
+                onTimeUpdate: (time: number) => {
+                  onTimeUpdate(time);
+                },
+                onEnded: () => {
+                  onPlayPause();
+                },
+                onStateChange: () => {},
+              });
+              toneEngine.load(audioUrl).then(() => {
+                setDuration(toneEngine.duration);
+                setAudioLoaded(true);
+                setEngineReady(true);
+                audioInitializedRef.current = true;
+              }).catch((err) => {
+                logger.warn("VideoPreview", "Tone.js reload failed:", err);
+                setAudioLoaded(true);
+                setEngineReady(false);
+              });
+            }}
+            className="absolute top-3 right-3 z-20 p-2 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur transition-colors"
+            title="刷新视频"
+          >
+            <RefreshCw className="w-4 h-4 text-white" />
+          </button>
+        )}
       </div>
 
-      {/* Playback controls */}
-      <div className="flex items-center gap-3 px-2">
+      {/* ── Full-featured playback controls ── */}
+      <div className="flex items-center gap-3 px-1">
+        {/* Play/Pause button */}
         <button
           onClick={onPlayPause}
-          className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+          className="p-2 rounded-full hover:bg-sky-100 transition-colors text-sky-600"
+          disabled={!audioLoaded}
+          title={isPlaying ? "暂停" : "播放"}
         >
           {isPlaying ? (
-            <Pause className="w-6 h-6" />
+            <Pause className="w-5 h-5" />
           ) : (
-            <Play className="w-6 h-6" />
+            <Play className="w-5 h-5" />
           )}
         </button>
 
-        <span className="text-sm font-mono text-gray-600 min-w-[80px]">
+        {/* Time display */}
+        <span className="text-sm font-mono text-gray-500 min-w-[90px] tabular-nums">
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
 
         {/* Progress bar */}
         <div
-          className="flex-1 h-2 bg-gray-200 rounded-full cursor-pointer relative"
-          onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const ratio = x / rect.width;
-            onTimeUpdate(ratio * duration);
-          }}
+          className="flex-1 h-2 bg-gray-200 rounded-full cursor-pointer relative group/progress hover:h-3 transition-all"
+          onClick={handleSeek}
         >
           <div
-            className="h-full bg-purple-500 rounded-full transition-all"
+            className="h-full bg-gradient-to-r from-sky-400 to-blue-500 rounded-full transition-all relative"
             style={{
               width: duration > 0 ? `${(currentTime / duration) * 100}%` : "0%",
             }}
-          />
+          >
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-md border-2 border-sky-400 opacity-0 group-hover/progress:opacity-100 transition-opacity" />
+          </div>
         </div>
+
+        {/* Speed control */}
+        <div className="relative">
+          <button
+            onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+            className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-sky-100 transition-colors text-sm font-mono text-sky-600"
+            title="倍速"
+          >
+            <Gauge className="w-4 h-4" />
+            <span>{localSpeed}x</span>
+          </button>
+
+          {showSpeedMenu && (
+            <>
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setShowSpeedMenu(false)}
+              />
+              <div className="absolute bottom-full right-0 mb-2 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-40 min-w-[80px]">
+                {SPEED_OPTIONS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => {
+                      setLocalSpeed(s);
+                      setShowSpeedMenu(false);
+                    }}
+                    className={cn(
+                      "w-full px-4 py-2 text-sm text-left hover:bg-sky-50 transition-colors font-mono",
+                      localSpeed === s
+                        ? "text-sky-600 font-bold bg-sky-50"
+                        : "text-gray-600"
+                    )}
+                  >
+                    {s}x
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Mute button */}
+        <button
+          onClick={() => setMuted(!muted)}
+          className="p-1.5 rounded-full hover:bg-sky-100 transition-colors"
+          title={muted ? "取消静音" : "静音"}
+        >
+          {muted ? (
+            <VolumeX className="w-4 h-4 text-gray-400" />
+          ) : (
+            <Volume2 className="w-4 h-4 text-sky-600" />
+          )}
+        </button>
       </div>
     </div>
   );
-}
-
-// ============================================================
-// Canvas drawing helpers for different animation types
-// ============================================================
-
-function drawLyricLine(
-  ctx: CanvasRenderingContext2D,
-  line: { text: string; startTime: number; endTime: number },
-  progress: number,
-  params: StyleParams,
-  w: number,
-  h: number
-) {
-  const {
-    fontFamily,
-    fontSize,
-    primaryColor,
-    secondaryColor,
-    accentColor,
-    animation,
-    fontWeight,
-    textShadow,
-  } = params;
-
-  ctx.save();
-
-  // Set font
-  ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
-  const x = w / 2;
-  const y = h * 0.75;
-  const clampedProgress = Math.max(0, Math.min(1, progress));
-
-  // Text shadow for readability
-  if (textShadow) {
-    ctx.shadowColor = "rgba(0,0,0,0.7)";
-    ctx.shadowBlur = fontSize * 0.3;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 2;
-  } else {
-    ctx.shadowColor = "rgba(0,0,0,0.5)";
-    ctx.shadowBlur = fontSize * 0.15;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 1;
-  }
-
-  switch (animation) {
-    case "karaoke":
-      drawKaraoke(ctx, line.text, x, y, clampedProgress, primaryColor, accentColor);
-      break;
-    case "typewriter":
-      drawTypewriter(ctx, line.text, x, y, clampedProgress, primaryColor, secondaryColor);
-      break;
-    case "bounce":
-      drawBounce(ctx, line.text, x, y, clampedProgress, primaryColor, fontSize);
-      break;
-    case "scale-up":
-      drawScaleUp(ctx, line.text, x, y, clampedProgress, primaryColor, fontSize);
-      break;
-    case "slide-up":
-      drawSlideUp(ctx, line.text, x, y, clampedProgress, primaryColor, fontSize);
-      break;
-    case "fade-in":
-    default:
-      drawFadeIn(ctx, line.text, x, y, clampedProgress, primaryColor, secondaryColor);
-      break;
-  }
-
-  ctx.restore();
-}
-
-function drawFadeIn(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  progress: number,
-  primary: string,
-  secondary: string
-) {
-  const alpha = Math.min(1, progress * 2);
-  ctx.globalAlpha = 0.3 + alpha * 0.7;
-
-  // Draw background text (previous line effect)
-  ctx.fillStyle = secondary;
-  ctx.globalAlpha = 0.2;
-  ctx.fillText(text, x, y + 60);
-  ctx.globalAlpha = 0.3 + alpha * 0.7;
-
-  ctx.fillStyle = primary;
-  ctx.fillText(text, x, y);
-}
-
-function drawKaraoke(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  progress: number,
-  primary: string,
-  accent: string
-) {
-  // Full text in dim
-  ctx.fillStyle = primary;
-  ctx.globalAlpha = 0.3;
-  ctx.fillText(text, x, y);
-
-  // Measure text for clipping
-  const metrics = ctx.measureText(text);
-  const textWidth = metrics.width;
-  const clipWidth = textWidth * progress;
-
-  // Draw highlighted portion
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x - textWidth / 2, y - 60, clipWidth, 120);
-  ctx.clip();
-
-  ctx.fillStyle = accent;
-  ctx.globalAlpha = 1;
-  ctx.fillText(text, x, y);
-  ctx.restore();
-}
-
-function drawTypewriter(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  progress: number,
-  primary: string,
-  secondary: string
-) {
-  const visibleChars = Math.floor(text.length * progress);
-  const visibleText = text.slice(0, visibleChars);
-
-  ctx.fillStyle = primary;
-  ctx.globalAlpha = 1;
-  ctx.fillText(visibleText, x, y);
-
-  // Blinking cursor
-  if (progress < 1 && Math.floor(Date.now() / 500) % 2 === 0) {
-    const metrics = ctx.measureText(visibleText);
-    const cursorX = x + metrics.width / 2 + 4;
-    ctx.fillStyle = primary;
-    ctx.fillRect(cursorX, y - 24, 3, 48);
-  }
-}
-
-function drawBounce(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  progress: number,
-  primary: string,
-  fontSize: number
-) {
-  const bounce = Math.sin(progress * Math.PI) * 8;
-  const scale = 1 + Math.sin(progress * Math.PI) * 0.05;
-
-  ctx.save();
-  ctx.translate(x, y + bounce);
-  ctx.scale(scale, scale);
-  ctx.fillStyle = primary;
-  ctx.globalAlpha = Math.min(1, progress * 2);
-  ctx.fillText(text, 0, 0);
-  ctx.restore();
-}
-
-function drawScaleUp(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  progress: number,
-  primary: string,
-  fontSize: number
-) {
-  const scale = 0.8 + progress * 0.3;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(scale, scale);
-  ctx.fillStyle = primary;
-  ctx.globalAlpha = Math.min(1, progress * 1.5);
-  ctx.fillText(text, 0, 0);
-  ctx.restore();
-}
-
-function drawSlideUp(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  progress: number,
-  primary: string,
-  fontSize: number
-) {
-  const offsetY = (1 - progress) * 30;
-  ctx.fillStyle = primary;
-  ctx.globalAlpha = Math.min(1, progress * 2);
-  ctx.fillText(text, x, y + offsetY);
 }

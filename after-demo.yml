@@ -1,0 +1,114 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "返回" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - img [ref=e6]
+          - generic [ref=e8]: 返回
+        - heading "LyricVibe" [level=1] [ref=e9]:
+          - img [ref=e10]
+          - text: LyricVibe
+        - generic [ref=e56]: 演示模式
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - button "中文" [ref=e16]
+          - button "EN" [ref=e17]
+        - button "导出" [ref=e22]:
+          - img [ref=e23]
+          - text: 导出
+    - generic [ref=e26]:
+      - generic [ref=e57]:
+        - generic [ref=e58]:
+          - button [ref=e60]:
+            - img [ref=e62]
+          - generic: 空格暂停 · ←→ 快进快退
+        - generic [ref=e64]:
+          - button "播放" [ref=e65]:
+            - img [ref=e66]
+          - generic [ref=e68]: 0:00 / 0:32
+          - button "1x" [ref=e72]:
+            - img [ref=e73]
+            - generic [ref=e76]: 1x
+          - button "静音" [ref=e77]:
+            - img [ref=e78]
+      - generic [ref=e83]:
+        - generic [ref=e84]:
+          - button "风格" [ref=e85]:
+            - img [ref=e86]
+            - text: 风格
+          - button "滤镜" [ref=e89]:
+            - img [ref=e90]
+            - text: 滤镜
+          - button "音频" [ref=e96]:
+            - img [ref=e97]
+            - text: 音频
+          - button "高级" [ref=e101]:
+            - img [ref=e102]
+            - text: 高级
+        - generic [ref=e104]:
+          - generic [ref=e105]:
+            - text: 情感
+            - generic [ref=e106]:
+              - generic [ref=e107]: energy 95%
+              - generic [ref=e108]: triumph 88%
+              - generic [ref=e109]: 热情 82%
+              - generic [ref=e110]: 喜悦 75%
+          - generic [ref=e111]:
+            - text: 主题
+            - generic [ref=e112]:
+              - generic [ref=e113]: dance & movement
+              - generic [ref=e114]: electric energy
+              - generic [ref=e115]: storm to sunshine
+              - generic [ref=e116]: empowerment
+          - generic [ref=e117]:
+            - generic [ref=e118]: "节奏:"
+            - generic [ref=e119]: 快速
+          - generic [ref=e120]:
+            - text: 风格提示词
+            - textbox "描述你想要的字幕样式..." [ref=e121]: Electric blue and pure white typography pulsing with dance energy. Letters bounce and vibrate like a heartbeat, matching the rhythm of the choreography. Sky-blue glow, motion blur accents, neon-light aesthetic. High-energy karaoke bounce that makes every word feel like a dance move.
+            - generic [ref=e122]:
+              - button "应用样式" [ref=e123]
+              - button "重新生成" [ref=e124]:
+                - img [ref=e125]
+                - text: 重新生成
+          - generic [ref=e130]:
+            - text: 🤖 AI 字幕模板生成
+            - paragraph [ref=e131]: 用自然语言描述你想要的字幕效果（弧度、位置、动画等）
+            - generic [ref=e132]:
+              - 'textbox "例: 左上角弧形字幕，金色发光，弹跳动画" [ref=e133]'
+              - button [disabled] [ref=e134]:
+                - img [ref=e135]
+            - generic [ref=e138]:
+              - button "蓝白弹跳 左右交替 发光" [ref=e139]
+              - button "居中弧形 金色 优雅衬线体" [ref=e140]
+              - button "底部玻璃背景 手写体 滑入" [ref=e141]
+              - button "顶部波浪 霓虹描边 跳动" [ref=e142]
+          - generic [ref=e143]:
+            - text: 🎨 字幕模板预设
+            - generic [ref=e144]:
+              - button "居中弹跳 蓝白交替·跳动" [ref=e145]:
+                - generic [ref=e148]: 居中弹跳
+                - paragraph [ref=e149]: 蓝白交替·跳动
+              - button "弧形优雅 金色弯曲·衬线" [ref=e150]:
+                - generic [ref=e153]: 弧形优雅
+                - paragraph [ref=e154]: 金色弯曲·衬线
+              - button "玻璃Vlog 左下毛玻璃·手写" [ref=e155]:
+                - generic [ref=e158]: 玻璃Vlog
+                - paragraph [ref=e159]: 左下毛玻璃·手写
+              - button "霓虹跳动 顶部波浪·描边" [ref=e160]:
+                - generic [ref=e163]: 霓虹跳动
+                - paragraph [ref=e164]: 顶部波浪·描边
+          - generic [ref=e165]:
+            - text: 快捷模板
+            - generic [ref=e166]:
+              - button "minimal modern" [ref=e167]: minimal modern
+              - button "vintage film" [ref=e169]: vintage film
+              - button "journal diary" [ref=e171]: journal diary
+          - generic [ref=e173]:
+            - text: 风格变体
+            - generic [ref=e174]:
+              - button "gothic drama" [ref=e175]: gothic drama
+              - button "modern pop" [ref=e177]: modern pop
+              - button "vintage journal" [ref=e179]: vintage journal
+  - alert [ref=e55]

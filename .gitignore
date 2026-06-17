@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.local.example
 
 # vercel
 .vercel
@@ -39,3 +40,46 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ============================================================
+# LyricVibe — 大文件 & 产物排除
+# ============================================================
+
+# 用户上传的文件（每次部署不同）
+/public/uploads/
+/public/out/
+
+# Demucs 音源分离产物
+/public/out/demucs_out/
+/out/demucs_out/
+
+# Remotion 渲染产物
+/out/renders/
+/out/trimmed/
+
+# 剪映版视频（非项目核心资产）
+/public/剪映版.mov
+
+# 大型 demo 视频（建议用 Git LFS 或外部存储）
+/public/lyricvibe_demo_flow.mp4
+
+# Playwright 录制产物
+/.playwright-cli/
+
+# 测试截图（项目截图保留）
+/screenshot-*.png
+/final-check.png
+
+# CodeBuddy AI 数据
+/.codebuddy/
+
+# Agent 提示文件（AI 工具专属）
+/AGENTS.md
+/CLAUDE.md
+
+# render-server 依赖（应在部署时安装）
+/render-server/node_modules/
+
+# 根目录临时文件
+/create_demo.png
+/demo_audio.mp3

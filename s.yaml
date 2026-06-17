@@ -1,0 +1,37 @@
+# -------------------------------------------
+# 阿里云函数计算 FC 部署配置
+# 工具: Serverless Devs (npm install -g @serverless-devs/s)
+# 使用: s deploy
+# -------------------------------------------
+
+edition: 3.0.0
+name: lyricvibe-fc
+access: "default"
+
+resources:
+  lyricvibe-render:
+    component: fc3
+    props:
+      region: cn-hangzhou
+      functionName: lyricvibe-render
+      description: LyricVibe Remotion 视频渲染函数
+      runtime: custom-container
+      cpu: 2
+      memorySize: 4096
+      diskSize: 10240
+      timeout: 600
+      environmentVariables:
+        NODE_ENV: production
+        PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+      customContainerConfig:
+        image: >-
+          registry.cn-hangzhou.aliyuncs.com/<YOUR_NAMESPACE>/lyricvibe-renderer:latest
+        command: '["node", "render-server/index.js"]'
+        args: '["-p", "9000"]'
+      triggers:
+        - triggerName: httpTrigger
+          triggerType: http
+          triggerConfig:
+            methods: ["GET", "POST", "DELETE"]
+            authType: anonymous
+            disableURLInternet: false

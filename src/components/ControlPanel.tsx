@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import {
   Palette,
   Sparkles,
@@ -10,6 +10,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n/I18nProvider";
+import { tEmotion } from "@/lib/i18n/dictionaries";
 import type {
   AnalysisResult,
   StyleParams,
@@ -25,6 +27,8 @@ import {
   ANIMATION_LABELS,
   DECORATION_LABELS,
 } from "@/lib/types";
+import { OPHELIA_STYLE, OPHELIA_TEMPLATE } from "@/lib/demo-data";
+import type { SubtitleTemplate } from "@/lib/types";
 
 interface ControlPanelProps {
   analysis: AnalysisResult | null;
@@ -44,6 +48,12 @@ interface ControlPanelProps {
   isAnalyzing: boolean;
   alternativeStyles?: Record<string, StyleParams>;
   onApplyAlternativeStyle?: (key: string) => void;
+  /** 字幕模板相关 */
+  subtitleTemplate?: SubtitleTemplate;
+  templateDescription?: string;
+  onTemplateDescriptionChange?: (desc: string) => void;
+  onTemplateGenerate?: () => void;
+  onSubtitleTemplateChange?: (template: SubtitleTemplate) => void;
 }
 
 type Tab = "style" | "filter" | "audio" | "advanced";
@@ -66,19 +76,27 @@ export function ControlPanel({
   isAnalyzing,
   alternativeStyles,
   onApplyAlternativeStyle,
+  subtitleTemplate,
+  templateDescription = "",
+  onTemplateDescriptionChange,
+  onTemplateGenerate,
+  onSubtitleTemplateChange,
 }: ControlPanelProps) {
+  const { locale, t } = useI18n();
+  const cpDict = t("controlPanel");
+
   const [activeTab, setActiveTab] = useState<Tab>("style");
   const [localPrompt, setLocalPrompt] = useState(stylePrompt);
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: "style", label: "Style", icon: <Sparkles className="w-4 h-4" /> },
-    { id: "filter", label: "Filter", icon: <Palette className="w-4 h-4" /> },
-    { id: "audio", label: "Audio", icon: <Music className="w-4 h-4" /> },
-    { id: "advanced", label: "Advanced", icon: <Sliders className="w-4 h-4" /> },
+    { id: "style", label: cpDict.tabs.style, icon: <Sparkles className="w-4 h-4" /> },
+    { id: "filter", label: cpDict.tabs.filter, icon: <Palette className="w-4 h-4" /> },
+    { id: "audio", label: cpDict.tabs.audio, icon: <Music className="w-4 h-4" /> },
+    { id: "advanced", label: cpDict.tabs.advanced, icon: <Sliders className="w-4 h-4" /> },
   ];
 
   return (
-    <div className="bg-white rounded-xl shadow-lg border border-gray-200 h-full flex flex-col">
+    <div className="bg-white rounded-xl shadow-lg border border-sky-100 h-full flex flex-col">
       {/* Tab bar */}
       <div className="flex border-b border-gray-200 px-2">
         {tabs.map((tab) => (
@@ -88,8 +106,8 @@ export function ControlPanel({
             className={cn(
               "flex items-center gap-1.5 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px",
               activeTab === tab.id
-                ? "border-purple-500 text-purple-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                ? "border-sky-500 text-sky-600"
+                : "border-transparent text-gray-400 hover:text-gray-600"
             )}
           >
             {tab.icon}
@@ -114,6 +132,11 @@ export function ControlPanel({
             lyrics={lyrics}
             alternativeStyles={alternativeStyles}
             onApplyAlternativeStyle={onApplyAlternativeStyle}
+            templateDescription={templateDescription}
+            onTemplateDescriptionChange={onTemplateDescriptionChange}
+            onTemplateGenerate={onTemplateGenerate}
+            onSubtitleTemplateChange={onSubtitleTemplateChange}
+            subtitleTemplate={subtitleTemplate}
           />
         )}
 
@@ -161,6 +184,10 @@ function StyleTab({
   lyrics,
   alternativeStyles,
   onApplyAlternativeStyle,
+  templateDescription = "",
+  onTemplateDescriptionChange,
+  onTemplateGenerate,
+  onSubtitleTemplateChange,
 }: {
   analysis: AnalysisResult | null;
   styleParams: StyleParams;
@@ -174,28 +201,49 @@ function StyleTab({
   lyrics: LyricLine[];
   alternativeStyles?: Record<string, StyleParams>;
   onApplyAlternativeStyle?: (key: string) => void;
+  templateDescription?: string;
+  onTemplateDescriptionChange?: (desc: string) => void;
+  onTemplateGenerate?: () => void;
+  onSubtitleTemplateChange?: (template: SubtitleTemplate) => void;
+  subtitleTemplate?: SubtitleTemplate;
 }) {
+  const { locale, t } = useI18n();
+  const dict = t("controlPanel").style;
+
+  // Store subtitleTemplate in a local variable (workaround for Turbopack closure tracking)
+  // eslint-disable-next-line prefer-const
+  const _subtitleTemplate = (arguments as unknown as [Record<string, unknown>])[0]?.subtitleTemplate as SubtitleTemplate | undefined;
+
+  // Pre-compute preset active states outside JSX to avoid closure issues
+  const subtitlePresets = [
+    { name: "Opalite 热舞", desc: "Impact粗体·弹跳·高亮", color: "#00E5FF", template: OPHELIA_TEMPLATE, style: OPHELIA_STYLE, hint: undefined as string | undefined, isTemplate: true },
+    { name: "居中弹跳", desc: "蓝白交替·跳动", color: "#4FC3F7", template: undefined as SubtitleTemplate | undefined, style: undefined as StyleParams | undefined, hint: "蓝白弹跳 左右交替 发光", isTemplate: false },
+    { name: "弧形优雅", desc: "金色弯曲·衬线", color: "#FFD700", template: undefined as SubtitleTemplate | undefined, style: undefined as StyleParams | undefined, hint: "居中弧形 金色 优雅衬线体", isTemplate: false },
+    { name: "玻璃Vlog", desc: "左下毛玻璃·手写", color: "#69F0AE", template: undefined as SubtitleTemplate | undefined, style: undefined as StyleParams | undefined, hint: "底部玻璃背景 手写体 滑入", isTemplate: false },
+    { name: "霓虹跳动", desc: "顶部波浪·描边", color: "#FF6B6B", template: undefined as SubtitleTemplate | undefined, style: undefined as StyleParams | undefined, hint: "顶部波浪 霓虹描边 跳动", isTemplate: false },
+  ] as const;
+
   return (
     <div className="space-y-5">
       {/* Analysis trigger */}
       {!analysis ? (
         <div className="text-center py-6">
-          <Sparkles className="w-10 h-10 mx-auto text-purple-400 mb-3" />
-          <p className="text-sm text-gray-600 mb-3">
-            Upload audio to analyze lyrics and generate style
+          <Sparkles className="w-10 h-10 mx-auto text-sky-400 mb-3" />
+          <p className="text-sm text-gray-500 mb-3">
+            {dict.noAnalysis}
           </p>
           <button
             onClick={onAnalyze}
             disabled={isAnalyzing || lyrics.length === 0}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-lg text-sm font-medium hover:from-sky-400 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isAnalyzing ? (
               <span className="flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                Analyzing...
+                {dict.analyzing}
               </span>
             ) : (
-              "✨ Analyze Lyrics"
+              dict.analyzeBtn
             )}
           </button>
         </div>
@@ -203,17 +251,17 @@ function StyleTab({
         <>
           {/* Emotion tags */}
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Emotions
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              {dict.emotions}
             </label>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {analysis.emotions.map((e) => (
                 <span
                   key={e.label}
-                  className="px-2.5 py-1 bg-purple-50 text-purple-700 rounded-full text-xs font-medium"
+                  className="px-2.5 py-1 bg-sky-50 text-sky-600 rounded-full text-xs font-medium"
                   style={{ opacity: 0.5 + e.intensity * 0.5 }}
                 >
-                  {e.label} {Math.round(e.intensity * 100)}%
+                  {tEmotion(e.label, locale)} {Math.round(e.intensity * 100)}%
                 </span>
               ))}
             </div>
@@ -221,16 +269,16 @@ function StyleTab({
 
           {/* Theme */}
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Theme
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              {dict.theme}
             </label>
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {analysis.theme.map((t) => (
+              {analysis.theme.map((tStr) => (
                 <span
-                  key={t}
-                  className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium"
+                  key={tStr}
+                  className="px-2.5 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-medium"
                 >
-                  {t}
+                  {tStr}
                 </span>
               ))}
             </div>
@@ -238,60 +286,166 @@ function StyleTab({
 
           {/* Tempo */}
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-xs font-semibold text-gray-500 uppercase">
-              Tempo:
+            <span className="text-xs font-semibold text-gray-400 uppercase">
+              {dict.tempo}:
             </span>
-            <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs font-medium">
-              {analysis.tempo}
+            <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded text-xs font-medium">
+              {tEmotion(analysis.tempo, locale)}
             </span>
           </div>
 
           {/* Style Prompt */}
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Style Prompt
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              {dict.stylePrompt}
             </label>
             <textarea
               value={localPrompt}
               onChange={(e) => onLocalPromptChange(e.target.value)}
               rows={3}
-              className="w-full mt-2 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
-              placeholder="Describe your subtitle style..."
+              className="w-full mt-2 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-sky-400 focus:border-transparent resize-none"
+              placeholder={dict.stylePromptPlaceholder}
             />
             <div className="flex gap-2 mt-2">
               <button
                 onClick={onStylePromptApply}
-                className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700 transition-colors"
+                className="px-3 py-1.5 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-lg text-xs font-medium hover:from-sky-400 hover:to-blue-500 transition-colors"
               >
-                Apply Style
+                {dict.applyStyle}
               </button>
               <button
                 onClick={onAnalyze}
-                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors flex items-center gap-1"
+                className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors flex items-center gap-1"
               >
                 <RefreshCw className="w-3 h-3" />
-                Regenerate
+                {dict.regenerate}
               </button>
             </div>
           </div>
 
-          {/* Quick templates */}
+          {/* Template Description (字幕模板) */}
+          {onTemplateDescriptionChange && onTemplateGenerate && (
+            <div>
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                🤖 AI 字幕模板生成
+              </label>
+              <p className="text-[10px] text-gray-400 mt-0.5 mb-1">
+                用自然语言描述你想要的字幕效果（弧度、位置、动画等）
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={templateDescription}
+                  onChange={(e) => onTemplateDescriptionChange(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && onTemplateGenerate()}
+                  placeholder="例: 左上角弧形字幕，金色发光，弹跳动画"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                />
+                <button
+                  onClick={onTemplateGenerate}
+                  disabled={!templateDescription.trim()}
+                  className="px-3 py-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-lg text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-all whitespace-nowrap"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {/* 快捷提示词 */}
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {[
+                  "蓝白弹跳 左右交替 发光",
+                  "居中弧形 金色 优雅衬线体",
+                  "底部玻璃背景 手写体 滑入",
+                  "顶部波浪 霓虹描边 跳动",
+                ].map((hint) => (
+                  <button
+                    key={hint}
+                    onClick={() => {
+                      onTemplateDescriptionChange(hint);
+                      // Use requestAnimationFrame instead of setTimeout for deterministic ordering
+                      requestAnimationFrame(() => onTemplateGenerate());
+                    }}
+                    className="px-2 py-1 text-[10px] bg-gray-100 hover:bg-sky-100 text-gray-500 hover:text-sky-600 rounded-md transition-colors"
+                  >
+                    {hint}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Quick subtitle template presets */}
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Quick Templates
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              🎨 字幕模板预设
+            </label>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              {subtitlePresets.map((preset) => {
+                // Determine if this preset is currently active
+                const isActive = preset.isTemplate
+                  ? _subtitleTemplate?.name === preset.template?.name
+                  : false;
+                return (
+                <button
+                  key={preset.name}
+                  onClick={() => {
+                    if (preset.template) {
+                      onSubtitleTemplateChange?.(preset.template);
+                      if (preset.style) {
+                        onStyleParamsChange(preset.style);
+                      }
+                    } else if (preset.hint) {
+                      onTemplateDescriptionChange?.(preset.hint);
+                      requestAnimationFrame(() => onTemplateGenerate?.());
+                    }
+                  }}
+                  className={cn(
+                    "p-2.5 border rounded-lg hover:border-sky-300 hover:bg-sky-50 transition-colors text-left group",
+                    isActive
+                      ? "border-sky-500 bg-sky-50 ring-1 ring-sky-200"
+                      : "border-gray-200"
+                  )}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div
+                      className="w-5 h-5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: preset.color }}
+                    />
+                    <span className={cn(
+                      "text-xs font-semibold group-hover:text-sky-600",
+                      isActive ? "text-sky-700" : "text-gray-600"
+                    )}>
+                      {preset.name}
+                    </span>
+                    {isActive && (
+                      <span className="text-[9px] bg-sky-500 text-white px-1.5 py-0.5 rounded-full font-medium">
+                        当前
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-400">{preset.desc}</p>
+                </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Quick style templates */}
+          <div>
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              {dict.quickTemplates}
             </label>
             <div className="grid grid-cols-3 gap-2 mt-2">
               {Object.entries(STYLE_TEMPLATES).map(([key, params]) => (
                 <button
                   key={key}
                   onClick={() => onStyleParamsChange(params)}
-                  className="p-2 text-xs border border-gray-200 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-colors text-left"
+                  className="p-2 text-xs border border-gray-200 rounded-lg hover:border-sky-300 hover:bg-sky-50 transition-colors text-left"
                 >
                   <div
                     className="w-full h-6 rounded mb-1"
                     style={{ backgroundColor: params.accentColor }}
                   />
-                  <span className="font-medium capitalize">
+                  <span className="font-medium capitalize text-gray-600">
                     {key.replace("-", " ")}
                   </span>
                 </button>
@@ -302,15 +456,15 @@ function StyleTab({
           {/* Alternative styles (demo-specific) */}
           {alternativeStyles && onApplyAlternativeStyle && (
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Style Variations
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                {dict.styleVariations}
               </label>
               <div className="grid grid-cols-3 gap-2 mt-2">
                 {Object.keys(alternativeStyles).map((key) => (
                   <button
                     key={key}
                     onClick={() => onApplyAlternativeStyle(key)}
-                    className="p-2 text-xs border border-gray-200 rounded-lg hover:border-pink-400 hover:bg-pink-50 transition-colors text-left"
+                    className="p-2 text-xs border border-gray-200 rounded-lg hover:border-sky-300 hover:bg-sky-50 transition-colors text-left"
                   >
                     <div
                       className="w-full h-6 rounded mb-1"
@@ -318,7 +472,7 @@ function StyleTab({
                         backgroundColor: alternativeStyles[key].accentColor,
                       }}
                     />
-                    <span className="font-medium capitalize">
+                    <span className="font-medium capitalize text-gray-600">
                       {key.replace("-", " ")}
                     </span>
                   </button>
@@ -336,67 +490,67 @@ function StyleTab({
 // Filter Tab
 // ============================================================
 
-function FilterTab({
+const FilterTab = memo(function FilterTab({
   filter,
   onFilterChange,
 }: {
   filter: FilterType;
   onFilterChange: (f: FilterType) => void;
 }) {
+  const { t } = useI18n();
+  const dict = t("controlPanel").filter;
+  const labels = dict.labels;
+
   const filters = Object.entries(FILTER_LABELS) as [FilterType, string][];
 
   return (
     <div className="space-y-3">
-      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-        Video Filter
+      <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+        {dict.videoFilter}
       </label>
       <div className="grid grid-cols-4 gap-2">
-        {filters.map(([key, label]) => (
+        {filters.map(([key]) => (
           <button
             key={key}
             onClick={() => onFilterChange(key)}
             className={cn(
               "p-2 rounded-lg text-xs font-medium transition-all",
               filter === key
-                ? "bg-purple-600 text-white shadow-md"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-md"
+                : "bg-gray-100 text-gray-500 hover:bg-gray-200"
             )}
           >
-            {label}
+            {(labels as Record<string, string>)[key]}
           </button>
         ))}
       </div>
 
       {/* Filter preview strip */}
       <div className="mt-3">
-        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          Preview
+        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          {dict.preview}
         </label>
         <div className="mt-1 h-16 rounded-lg overflow-hidden relative">
           <div
             className="absolute inset-0"
             style={{
               background:
-                "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                "linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%)",
               filter: FILTER_PRESETS[filter],
             }}
           />
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="text-white text-sm font-medium drop-shadow-lg">
-              {FILTER_LABELS[filter]}
+              {(labels as Record<string, string>)[filter]}
             </span>
           </div>
         </div>
       </div>
     </div>
   );
-}
+});
 
-// ============================================================
-// Audio Tab
-// ============================================================
-
-function AudioTab({
+const AudioTab = memo(function AudioTab({
   speed,
   pitch,
   onSpeedChange,
@@ -407,15 +561,18 @@ function AudioTab({
   onSpeedChange: (s: number) => void;
   onPitchChange: (p: number) => void;
 }) {
+  const { t } = useI18n();
+  const dict = t("controlPanel").audio;
+
   return (
     <div className="space-y-6">
       {/* Speed control */}
       <div>
         <div className="flex justify-between items-center mb-2">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Speed
+          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            {dict.speed}
           </label>
-          <span className="text-sm font-mono font-bold text-purple-600">
+          <span className="text-sm font-mono font-bold text-sky-600">
             {speed.toFixed(1)}x
           </span>
         </div>
@@ -426,28 +583,29 @@ function AudioTab({
           step="0.1"
           value={speed}
           onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-sky-500"
         />
-        <div className="flex justify-between text-xs text-gray-400 mt-1">
-          <span>0.5x</span>
+        <div className="relative text-xs text-gray-400 mt-1 h-5">
+          <span className="absolute left-0">0.5x</span>
           <span
-            className="text-purple-500 font-medium cursor-pointer hover:underline"
+            className="absolute text-sky-500 font-medium cursor-pointer hover:underline"
+            style={{ left: `${((1 - 0.5) / (2 - 0.5)) * 100}%`, transform: "translateX(-50%)" }}
             onClick={() => onSpeedChange(1)}
           >
-            1x (normal)
+            1x ({dict.normal})
           </span>
-          <span>2x</span>
+          <span className="absolute right-0">2x</span>
         </div>
       </div>
 
       {/* Pitch control */}
       <div>
         <div className="flex justify-between items-center mb-2">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Pitch
+          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            {dict.pitch}
           </label>
-          <span className="text-sm font-mono font-bold text-purple-600">
-            {pitch > 0 ? `+${pitch}` : pitch} semitones
+          <span className="text-sm font-mono font-bold text-sky-600">
+            {pitch > 0 ? `+${pitch}` : pitch} {dict.semitones}
           </span>
         </div>
         <input
@@ -457,15 +615,15 @@ function AudioTab({
           step="1"
           value={pitch}
           onChange={(e) => onPitchChange(parseInt(e.target.value))}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-sky-500"
         />
         <div className="flex justify-between text-xs text-gray-400 mt-1">
           <span>-12</span>
           <span
-            className="text-purple-500 font-medium cursor-pointer hover:underline"
+            className="text-sky-500 font-medium cursor-pointer hover:underline"
             onClick={() => onPitchChange(0)}
           >
-            0 (original)
+            0 ({dict.original})
           </span>
           <span>+12</span>
         </div>
@@ -473,25 +631,27 @@ function AudioTab({
 
       <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
         <p className="text-xs text-amber-700">
-          💡 Speed change uses time-stretch (preserves pitch). Pitch change
-          preserves speed. Both sync with subtitle timing automatically.
+          {dict.tip}
         </p>
       </div>
     </div>
   );
-}
+});
 
 // ============================================================
 // Advanced Tab
 // ============================================================
 
-function AdvancedTab({
+const AdvancedTab = memo(function AdvancedTab({
   styleParams,
   onStyleParamsChange,
 }: {
   styleParams: StyleParams;
   onStyleParamsChange: (p: StyleParams) => void;
 }) {
+  const { t } = useI18n();
+  const dict = t("controlPanel").advanced;
+
   const update = (partial: Partial<StyleParams>) => {
     onStyleParamsChange({ ...styleParams, ...partial });
   };
@@ -501,10 +661,10 @@ function AdvancedTab({
       {/* Font size */}
       <div>
         <div className="flex justify-between items-center mb-2">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Font Size
+          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            {dict.fontSize}
           </label>
-          <span className="text-sm font-mono font-bold text-purple-600">
+          <span className="text-sm font-mono font-bold text-sky-600">
             {styleParams.fontSize}px
           </span>
         </div>
@@ -515,17 +675,17 @@ function AdvancedTab({
           step="2"
           value={styleParams.fontSize}
           onChange={(e) => update({ fontSize: parseInt(e.target.value) })}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-sky-500"
         />
       </div>
 
       {/* Font weight */}
       <div>
         <div className="flex justify-between items-center mb-2">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Font Weight
+          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            {dict.fontWeight}
           </label>
-          <span className="text-sm font-mono font-bold text-purple-600">
+          <span className="text-sm font-mono font-bold text-sky-600">
             {styleParams.fontWeight}
           </span>
         </div>
@@ -536,29 +696,29 @@ function AdvancedTab({
           step="100"
           value={styleParams.fontWeight}
           onChange={(e) => update({ fontWeight: parseInt(e.target.value) })}
-          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-sky-500"
         />
       </div>
 
       {/* Animation */}
       <div>
-        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          Animation
+        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          {dict.animation}
         </label>
         <div className="grid grid-cols-3 gap-2 mt-2">
           {(Object.entries(ANIMATION_LABELS) as [AnimationType, string][]).map(
-            ([key, label]) => (
+            ([key]) => (
               <button
                 key={key}
                 onClick={() => update({ animation: key })}
                 className={cn(
                   "px-2 py-1.5 rounded-lg text-xs font-medium transition-all",
                   styleParams.animation === key
-                    ? "bg-purple-600 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white"
+                    : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                 )}
               >
-                {label}
+                {(dict.animationLabels as Record<string, string>)[key]}
               </button>
             )
           )}
@@ -567,13 +727,13 @@ function AdvancedTab({
 
       {/* Decoration */}
       <div>
-        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          Decoration
+        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          {dict.decoration}
         </label>
         <div className="grid grid-cols-3 gap-2 mt-2">
           {(
             Object.entries(DECORATION_LABELS) as [DecorationType, string][]
-          ).map(([key, label]) => (
+          ).map(([key]) => (
             <button
               key={key}
               onClick={() => {
@@ -593,11 +753,11 @@ function AdvancedTab({
               className={cn(
                 "px-2 py-1.5 rounded-lg text-xs font-medium transition-all",
                 styleParams.decoration.includes(key)
-                  ? "bg-purple-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
               )}
             >
-              {label}
+              {(dict.decorationLabels as Record<string, string>)[key]}
             </button>
           ))}
         </div>
@@ -605,14 +765,14 @@ function AdvancedTab({
 
       {/* Text shadow toggle */}
       <div className="flex items-center justify-between">
-        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          Text Shadow
+        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          {dict.textShadow}
         </label>
         <button
           onClick={() => update({ textShadow: !styleParams.textShadow })}
           className={cn(
             "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-            styleParams.textShadow ? "bg-purple-600" : "bg-gray-300"
+            styleParams.textShadow ? "bg-sky-500" : "bg-gray-300"
           )}
         >
           <span
@@ -626,8 +786,8 @@ function AdvancedTab({
 
       {/* Color pickers */}
       <div>
-        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          Colors
+        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          {dict.colors}
         </label>
         <div className="grid grid-cols-3 gap-3 mt-2">
           {(["primaryColor", "secondaryColor", "accentColor"] as const).map(
@@ -639,7 +799,7 @@ function AdvancedTab({
                   onChange={(e) => update({ [key]: e.target.value })}
                   className="w-full h-10 rounded-lg cursor-pointer border border-gray-200"
                 />
-                <span className="text-[10px] text-gray-500 mt-1 block capitalize">
+                <span className="text-[10px] text-gray-400 mt-1 block capitalize">
                   {key.replace("Color", "")}
                 </span>
               </div>
@@ -649,4 +809,4 @@ function AdvancedTab({
       </div>
     </div>
   );
-}
+});
