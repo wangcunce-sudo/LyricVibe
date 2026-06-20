@@ -13,6 +13,7 @@ import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import type { LyricLine, StyleParams, SubtitleTemplate } from "../types";
 import { styleParamsToTemplate } from "../types";
+import type { BeatInfo } from "../beat-detector";
 
 // ============================================================
 // SubtitleComposition Props
@@ -35,6 +36,8 @@ export interface SubtitleCompositionProps {
   height: number;
   /** 播放速度倍率（可选，默认 1） */
   speed?: number;
+  /** 音频节拍数据（可选，用于鼓点驱动动效） */
+  beats?: BeatInfo[];
 }
 
 // ============================================================
@@ -50,6 +53,7 @@ export const SubtitleComposition: React.FC<SubtitleCompositionProps> = ({
   width,
   height,
   speed = 1,
+  beats,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -96,6 +100,7 @@ export const SubtitleComposition: React.FC<SubtitleCompositionProps> = ({
       width={width}
       height={height}
       wordTimestamps={currentLine.words}
+      beats={beats}
     />
   );
 };
@@ -116,6 +121,7 @@ const LyricTextRenderer: React.FC<{
   width: number;
   height: number;
   wordTimestamps?: import("../types").WordTimestamp[];
+  beats?: BeatInfo[];
 }> = ({
   text,
   progress,
@@ -127,6 +133,7 @@ const LyricTextRenderer: React.FC<{
   width,
   height,
   wordTimestamps,
+  beats,
 }) => {
   const { layout, animation, render: renderParams } = template;
 
@@ -155,6 +162,22 @@ const LyricTextRenderer: React.FC<{
     case "random": {
       const pseudoRandom = ((lineIndex * 137 + 53) % 100) / 100;
       posX = layout.positionX + (pseudoRandom - 0.5) * 2 * layout.alternateAmplitude;
+      break;
+    }
+    case "length-adaptive": {
+      // 长歌词居中，短歌词两侧交替（根据字符数判断）
+      const charCount = text.length;
+      const isLong = charCount > 20;
+      if (isLong) {
+        // 长歌词：保持在中心位置
+        posX = layout.positionX;
+      } else {
+        // 短歌词：两侧交替，增加活力
+        const isEven = lineIndex % 2 === 0;
+        posX = isEven
+          ? layout.positionX - layout.alternateAmplitude * 0.8
+          : layout.positionX + layout.alternateAmplitude * 0.8;
+      }
       break;
     }
   }
@@ -378,6 +401,27 @@ const LyricTextRenderer: React.FC<{
   const words = displayText.split(" ");
   const wordCount = words.length;
 
+  // ── 节拍驱动增强系数 ──
+  const { fps } = useVideoConfig();
+  const currentTimeSec = frame / fps;
+  const beatBoost = React.useMemo(() => {
+    if (!beats || beats.length === 0) return 1.0;
+    const window = 0.06;
+    const nearestBeat = beats.reduce((closest, beat) => {
+      const dist = Math.abs(beat.time - currentTimeSec);
+      if (dist < window && dist < Math.abs(closest.time - currentTimeSec)) {
+        return beat;
+      }
+      return closest;
+    }, beats[0]);
+    const dist = Math.abs(nearestBeat.time - currentTimeSec);
+    if (dist < window) {
+      // 越接近节拍点，增强越强
+      return 1.0 + nearestBeat.strength * 0.5 * (1 - dist / window);
+    }
+    return 1.0;
+  }, [beats, currentTimeSec]);
+
   // Per-word pop animation timing
   const getWordAnimStyle = (wordIndex: number): React.CSSProperties => {
     let wordStart = 0;
@@ -409,11 +453,12 @@ const LyricTextRenderer: React.FC<{
     const wordProgress = Math.min(1, (clampedProgress - wordStart) / Math.max(0.001, popWindow));
 
     const t = wordProgress;
+    // 节拍增强：在鼓点附近放大弹性回弹幅度
     const popScale = t < 0.35
-      ? 0.8 + t * 0.8
+      ? 0.8 + t * 0.8 * beatBoost
       : 1.08 - (t - 0.35) * 0.123;
-    const finalScale = Math.min(1.08, Math.max(0.8, popScale));
-    const bounceY = Math.sin(t * Math.PI * 3) * 3 * (1 - t);
+    const finalScale = Math.min(1.12, Math.max(0.8, popScale));
+    const bounceY = Math.sin(t * Math.PI * 3) * 3 * (1 - t) * beatBoost;
     const opacity = Math.min(1, t * 4);
 
     return {

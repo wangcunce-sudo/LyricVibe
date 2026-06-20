@@ -396,7 +396,7 @@ Output ONLY valid JSON with this exact structure:
   "layout": {
     "positionX": 0.5,       // 0=left, 1=right
     "positionY": 0.65,      // 0=top, 1=bottom
-    "alternateMode": "none", // "none" | "alternate" | "random" | "wave"
+    "alternateMode": "none", // "none" | "alternate" | "random" | "wave" | "length-adaptive"
     "alternateAmplitude": 0, // 0-1, how much the position alternates
     "curvature": 0,          // -0.3 to 0.3, positive=arc up, negative=arc down
     "maxWidthRatio": 0.8,    // 0.3-0.95
@@ -435,16 +435,21 @@ Interpretation guidelines:
 - "左上/左下/右上/右下": map to positionX, positionY accordingly
 - "左右交替/左右跳": set alternateMode="alternate", alternateAmplitude=0.2-0.4
 - "波浪/波浪形": set alternateMode="wave", alternateAmplitude=0.3-0.5
+- "长短自适应/长句中短句两侧/根据歌词长度": set alternateMode="length-adaptive", alternateAmplitude=0.2-0.35
 - "跳动/弹跳/活力": use bounce entrance, bounciness 0.6-0.9
 - "玻璃/毛玻璃/半透明背景": set backgroundType="glass"
-- "描边/边框字": set strokeWidth 2-4
+- "描边/边框字/厚描边": set strokeWidth 3-6, strokeColor="#000000"
 - "发光/荧光/霓虹": set glowIntensity 0.5-0.9
 - "优雅/古典/衬线": use serif fontFamily
 - "现代/简约/无衬线": use sans-serif fontFamily
 - "手写/手写体": use cursive fontFamily
+- "粗体/Impact/抖音/tiktok": use Impact fontFamily, fontWeight 800-900
 - "大字/醒目": fontSize 60-80
 - "小字/低调": fontSize 28-38
-- Color keywords: map to appropriate HEX (red→#FF4444, blue→#4FC3F7, gold→#FFD700, pink→#FF69B4, green→#4CAF50, purple→#9C27B0, white→#FFFFFF, black→#000000, orange→#FF9800, teal→#009688)`;
+- "深色阴影/厚重阴影": set textShadow=true, glowIntensity 0.3-0.5, add dark drop shadow
+- "闪烁/闪烁放大/跳动高亮": set highlightWords to extract emotional keywords from the description, accentColor bright
+- "鼓点/节拍/卡点": set bounciness high (0.8-1.0), use shorter entranceDuration (0.15-0.25)
+- Color keywords: map to appropriate HEX (red→#FF4444, blue→#4FC3F7, gold→#FFD700, pink→#FF69B4, green→#4CAF50, purple→#9C27B0, white→#FFFFFF, black→#000000, orange→#FF9800, teal→#009688, cyan/青蓝→#00E5FF)`;
 
 /**
  * 通过用户语言描述生成字幕模板
@@ -594,11 +599,14 @@ function getDefaultTemplate(
   else if (lower.includes("居中") || lower.includes("中间")) { positionY = 0.5; }
 
   // Detect alternate mode
-  let alternateMode: "none" | "alternate" | "random" | "wave" = "alternate";
+  let alternateMode: "none" | "alternate" | "random" | "wave" | "length-adaptive" = "alternate";
   let alternateAmplitude = 0.3;
   if (lower.includes("波浪") || lower.includes("wave")) {
     alternateMode = "wave";
     alternateAmplitude = 0.4;
+  } else if (lower.includes("长短自适应") || lower.includes("根据长度") || lower.includes("长句中") || lower.includes("短句两侧") || lower.includes("length-adaptive")) {
+    alternateMode = "length-adaptive";
+    alternateAmplitude = 0.28;
   } else if (lower.includes("固定") || lower.includes("不变")) {
     alternateMode = "none";
     alternateAmplitude = 0;

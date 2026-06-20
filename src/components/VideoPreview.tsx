@@ -15,6 +15,8 @@ import { FILTER_PRESETS, styleParamsToTemplate } from "@/lib/types";
 import { toneEngine } from "@/lib/tone-engine";
 import { Player } from "@remotion/player";
 import { SubtitleComposition } from "@/lib/remotion/SubtitleComposition";
+import type { BeatInfo } from "@/lib/beat-detector";
+import { detectBeatsFromUrl } from "@/lib/beat-detector";
 
 interface VideoPreviewProps {
   videoUrl?: string;
@@ -59,6 +61,7 @@ export function VideoPreview({
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [localSpeed, setLocalSpeed] = useState(speed);
   const [engineReady, setEngineReady] = useState(false);
+  const [beats, setBeats] = useState<BeatInfo[] | undefined>(undefined);
   const audioInitializedRef = useRef(false);
 
   const hasVideo = !!videoUrl;
@@ -107,6 +110,26 @@ export function VideoPreview({
 
   // ── Clamp inFrame to avoid Player error (must be < durationInFrames) ──
   const safeFrame = Math.max(0, Math.min(currentFrame, Math.max(1, durationInFrames) - 1));
+
+  // ── Beat detection ──
+  useEffect(() => {
+    if (!audioUrl) return;
+
+    let cancelled = false;
+    setBeats(undefined);
+
+    detectBeatsFromUrl(audioUrl)
+      .then((result) => {
+        if (cancelled) return;
+        setBeats(result.beats);
+        logger.info("VideoPreview", `Beat detection: ${result.beats.length} beats, BPM: ${result.bpm}`);
+      })
+      .catch((err) => {
+        logger.warn("VideoPreview", "Beat detection failed:", err);
+      });
+
+    return () => { cancelled = true; };
+  }, [audioUrl]);
 
   // ── Tone.js audio engine setup ──
   useEffect(() => {
@@ -325,6 +348,7 @@ export function VideoPreview({
               width: compWidth,
               height: compHeight,
               speed,
+              beats,
             }}
             durationInFrames={Math.max(1, durationInFrames)}
             fps={FPS}

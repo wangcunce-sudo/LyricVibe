@@ -87,8 +87,8 @@ export interface SubtitleLayout {
   positionX: number;
   /** 垂直位置: 0=顶部, 0.5=居中, 1=底部 */
   positionY: number;
-  /** 交替模式: "none" | "alternate" | "random" | "wave" */
-  alternateMode: "none" | "alternate" | "random" | "wave";
+  /** 交替模式: "none" | "alternate" | "random" | "wave" | "length-adaptive" */
+  alternateMode: "none" | "alternate" | "random" | "wave" | "length-adaptive";
   /** 交替幅度 (0-1, 仅在 alternateMode 非 none 时生效) */
   alternateAmplitude: number;
   /** 文字弧度 (弯曲程度, 0=直线, 正值=上弧, 负值=下弧) */
