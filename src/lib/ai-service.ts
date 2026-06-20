@@ -24,14 +24,38 @@ const AI_TEMPLATE_TIMEOUT_MS = 20000;
 
 type AIProvider = "openai" | "anthropic" | "deepseek";
 
-function detectProvider(): AIProvider | null {
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+export interface ProviderConfig {
+  apiUrl: string;
+  apiKey: string;
+  model: string;
+  supportsJsonMode: boolean;
+}
+
+/**
+ * Detect AI provider with explicit env var support.
+ *
+ * Priority:
+ *   1. AI_PROVIDER env var (explicit override)
+ *   2. Auto-detect by API key presence (DeepSeek > OpenAI > Anthropic)
+ *
+ * DeepSeek is prioritized over Anthropic in auto-detect because:
+ *   - Better Chinese language support (critical for Chinese lyrics)
+ *   - More cost-effective for this use case
+ *   - Supports json_object response format natively
+ */
+export function detectProvider(): AIProvider | null {
+  const explicit = process.env.AI_PROVIDER?.toLowerCase();
+  if (explicit === "openai" || explicit === "anthropic" || explicit === "deepseek") {
+    return explicit;
+  }
+  // Auto-detect: DeepSeek first for Chinese lyrics support
   if (process.env.DEEPSEEK_API_KEY) return "deepseek";
   if (process.env.OPENAI_API_KEY) return "openai";
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
   return null;
 }
 
-function getProviderConfig(provider: AIProvider) {
+export function getProviderConfig(provider: AIProvider): ProviderConfig {
   switch (provider) {
     case "openai":
       return {
@@ -45,13 +69,13 @@ function getProviderConfig(provider: AIProvider) {
         apiUrl: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1/chat/completions",
         apiKey: process.env.DEEPSEEK_API_KEY!,
         model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
-        supportsJsonMode: true, // DeepSeek supports response_format json_object
+        supportsJsonMode: true,
       };
     case "anthropic":
       return {
         apiUrl: "https://api.anthropic.com/v1/messages",
         apiKey: process.env.ANTHROPIC_API_KEY!,
-        model: "claude-3-haiku-20240307",
+        model: process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307",
         supportsJsonMode: false,
       };
   }
@@ -73,7 +97,8 @@ Analyze the lyrics for:
 
 Output ONLY valid JSON, no markdown or explanation.`;
 
-const ANALYSIS_USER_PROMPT = (lyrics: string, isChinese: boolean) => `Analyze these lyrics:
+const ANALYSIS_USER_PROMPT = (lyrics: string, isChinese: boolean, songTitle?: string) => `Analyze these lyrics:
+${songTitle ? `\nThis song is identified as: "${songTitle}". Use the song's known mood, genre, and cultural context to inform your analysis.\n` : ""}
 ${isChinese ? "(Note: these are Chinese lyrics. Output emotion labels in English, but write the stylePrompt in Chinese as a keyword-dense subtitle template description.)" : ""}
 
 ${lyrics}`;
@@ -113,7 +138,8 @@ function getDefaultAnalysis(lyrics: LyricLine[]): AnalysisResult {
 // ============================================================
 
 export async function analyzeLyrics(
-  lyrics: LyricLine[]
+  lyrics: LyricLine[],
+  songTitle?: string
 ): Promise<AnalysisResult> {
   const provider = detectProvider();
 
@@ -125,20 +151,22 @@ export async function analyzeLyrics(
   const lyricsText = lyrics.map((l) => l.text).join("\n");
   const isChinese = isChineseLyrics(lyrics);
 
+  if (songTitle) {
+    logger.info("ai-service", `Analyzing lyrics with song context: "${songTitle}"`);
+  }
+
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), AI_ANALYSIS_TIMEOUT_MS);
+    const signal = AbortSignal.timeout(AI_ANALYSIS_TIMEOUT_MS);
 
     let result: AnalysisResult;
 
     if (provider === "anthropic") {
-      result = await callAnthropic(lyricsText, controller.signal, isChinese);
+      result = await callAnthropic(lyricsText, signal, isChinese, songTitle);
     } else {
       // Both OpenAI and DeepSeek use OpenAI-compatible API
-      result = await callOpenAICompat(lyricsText, controller.signal, provider, isChinese);
+      result = await callOpenAICompat(lyricsText, signal, provider, isChinese, songTitle);
     }
 
-    clearTimeout(timeout);
     return result;
   } catch (error) {
     logger.error("ai-service", "AI analysis failed:", error);
@@ -150,7 +178,8 @@ async function callOpenAICompat(
   lyricsText: string,
   signal: AbortSignal,
   provider: "openai" | "deepseek",
-  isChinese: boolean = false
+  isChinese: boolean = false,
+  songTitle?: string
 ): Promise<AnalysisResult> {
   const config = getProviderConfig(provider);
 
@@ -158,10 +187,10 @@ async function callOpenAICompat(
     model: config.model,
     messages: [
       { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
-      { role: "user", content: ANALYSIS_USER_PROMPT(lyricsText, isChinese) },
+      { role: "user", content: ANALYSIS_USER_PROMPT(lyricsText, isChinese, songTitle) },
     ],
-    temperature: 0.7,
-    max_tokens: 800,
+    temperature: 0.3, // Low temp for structured JSON output consistency
+    max_tokens: 1200,  // Increased for longer lyrics with detailed analysis
   };
 
   // DeepSeek and OpenAI both support json_object response format
@@ -194,7 +223,8 @@ async function callOpenAICompat(
 async function callAnthropic(
   lyricsText: string,
   signal: AbortSignal,
-  isChinese: boolean = false
+  isChinese: boolean = false,
+  songTitle?: string
 ): Promise<AnalysisResult> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -204,11 +234,11 @@ async function callAnthropic(
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-3-haiku-20240307",
-      max_tokens: 800,
+      model: process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307",
+      max_tokens: 1200,
       system: ANALYSIS_SYSTEM_PROMPT,
       messages: [
-        { role: "user", content: ANALYSIS_USER_PROMPT(lyricsText, isChinese) },
+        { role: "user", content: ANALYSIS_USER_PROMPT(lyricsText, isChinese, songTitle) },
       ],
     }),
     signal,
@@ -223,24 +253,72 @@ async function callAnthropic(
   return parseAnalysisResponse(content);
 }
 
-/** A safe JSON parse that returns a meaningful error instead of throwing */
-function safeJsonParse(raw: string): Record<string, unknown> {
+/**
+ * Safe JSON parse with multi-layer fallback.
+ *
+ * Handles common AI response quirks:
+ *   1. Markdown code fences
+ *   2. Extra text around JSON object
+ *   3. Multiple JSON objects (extracts the largest one)
+ *
+ * Uses bracket-counting extraction (not greedy regex) to correctly
+ * handle nested objects and avoid matching across multiple JSON blocks.
+ */
+export function safeJsonParse(raw: string): Record<string, unknown> {
   // First attempt: clean markdown fences and parse
   const cleaned = raw.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
   try {
     return JSON.parse(cleaned);
   } catch {
-    // Second attempt: extract JSON object from text
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) {
+    // Second attempt: bracket-counting extraction (handles nesting correctly)
+    const extracted = extractJsonObject(raw);
+    if (!extracted) {
       throw new Error("Could not find JSON object in AI response");
     }
     try {
-      return JSON.parse(match[0]);
+      return JSON.parse(extracted);
     } catch (innerError) {
-      throw new Error(`Failed to parse AI response as JSON: ${(innerError as Error).message}`);
+      // Third attempt: try to fix common JSON issues (trailing commas, etc.)
+      try {
+        const fixed = extracted
+          .replace(/,\s*}/g, "}")
+          .replace(/,\s*\]/g, "]");
+        return JSON.parse(fixed);
+      } catch {
+        throw new Error(`Failed to parse AI response as JSON: ${(innerError as Error).message}`);
+      }
     }
   }
+}
+
+/**
+ * Extract the first valid JSON object from text using bracket counting.
+ * Handles nested objects/arrays correctly, unlike greedy regex.
+ * Returns the largest JSON block if multiple are found.
+ */
+function extractJsonObject(text: string): string | null {
+  const blocks: string[] = [];
+  let depth = 0;
+  let start = -1;
+
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (text[i] === "}") {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        blocks.push(text.slice(start, i + 1));
+        start = -1;
+      } else if (depth < 0) {
+        depth = 0; // Reset on malformed input
+      }
+    }
+  }
+
+  if (blocks.length === 0) return null;
+  // Return the largest block (most likely the actual JSON payload)
+  return blocks.reduce((a, b) => (b.length > a.length ? b : a));
 }
 
 function parseAnalysisResponse(raw: string | undefined): AnalysisResult {
@@ -288,9 +366,13 @@ function parseAnalysisResponse(raw: string | undefined): AnalysisResult {
   });
 
   // Detect if the AI response is predominantly Chinese (for language normalization)
-  const responseText = JSON.stringify(json);
-  const chineseInResponse = (responseText.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
-  const isResponseChinese = chineseInResponse > responseText.length * 0.15;
+  // Check only the stylePrompt field — more reliable than checking entire JSON
+  const stylePromptText = String(
+    json.stylePrompt || json.style_prompt || json.styleDescription
+    || json.style_description || json.description || ""
+  );
+  const chineseInPrompt = (stylePromptText.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
+  const isResponseChinese = chineseInPrompt > stylePromptText.length * 0.2;
 
   // Normalize theme labels to match the response language
   const normalizedThemes = normalizeLabelsToLanguage(themes, isResponseChinese ? "zh" : "en");
@@ -301,11 +383,8 @@ function parseAnalysisResponse(raw: string | undefined): AnalysisResult {
     label: normalizeLabelToLanguage(e.label, isResponseChinese ? "zh" : "en"),
   }));
 
-  // Style prompt — support multiple field names
-  const stylePrompt = String(
-    json.stylePrompt || json.style_prompt || json.styleDescription
-    || json.style_description || json.description || ""
-  );
+  // Style prompt — reuse the already-extracted text
+  const stylePrompt = stylePromptText;
 
   logger.info("ai-service", "Parsed analysis:", {
     emotionCount: normalizedEmotions.length,
@@ -399,8 +478,7 @@ export async function parseStylePrompt(
   }
 
   try {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), AI_STYLE_PARSE_TIMEOUT_MS);
+    const signal = AbortSignal.timeout(AI_STYLE_PARSE_TIMEOUT_MS);
 
     const systemPrompt = `You are a style parser. Convert a visual style description into structured parameters for a subtitle renderer.
     
@@ -432,12 +510,12 @@ Tempo: ${analysis.tempo}`;
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-3-haiku-20240307",
+          model: process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307",
           max_tokens: 400,
           system: systemPrompt,
           messages: [{ role: "user", content: userPrompt }],
         }),
-        signal: controller.signal,
+        signal,
       });
       const data = await response.json();
       raw = data.content[0]?.text || "";
@@ -463,7 +541,7 @@ Tempo: ${analysis.tempo}`;
           Authorization: `Bearer ${config.apiKey}`,
         },
         body: JSON.stringify(body),
-        signal: controller.signal,
+        signal,
       });
       const data = await response.json();
       raw = data.choices?.[0]?.message?.content || "";
@@ -595,8 +673,7 @@ export async function generateSubtitleTemplate(
   }
 
   try {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), AI_TEMPLATE_TIMEOUT_MS);
+    const signal = AbortSignal.timeout(AI_TEMPLATE_TIMEOUT_MS);
 
     const userPrompt = `User wants subtitles that: "${userDescription}"
 ${currentStyle ? `\nCurrent style context: font=${currentStyle.fontFamily}, color=${currentStyle.primaryColor}, animation=${currentStyle.animation}` : ""}
@@ -614,12 +691,12 @@ Generate the subtitle template JSON that best matches this description.`;
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-3-haiku-20240307",
+          model: process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307",
           max_tokens: 800,
           system: TEMPLATE_SYSTEM_PROMPT,
           messages: [{ role: "user", content: userPrompt }],
         }),
-        signal: controller.signal,
+        signal,
       });
       const data = await response.json();
       raw = data.content[0]?.text || "";
@@ -645,7 +722,7 @@ Generate the subtitle template JSON that best matches this description.`;
           Authorization: `Bearer ${config.apiKey}`,
         },
         body: JSON.stringify(body),
-        signal: controller.signal,
+        signal,
       });
       const data = await response.json();
       raw = data.choices?.[0]?.message?.content || "";

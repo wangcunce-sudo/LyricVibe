@@ -205,6 +205,40 @@ export function styleParamsToTemplate(sp: StyleParams): SubtitleTemplate {
   };
 }
 
+/**
+ * Merge StyleParams into SubtitleTemplate.
+ *
+ * This is the SINGLE SOURCE OF TRUTH for merging user style overrides
+ * into a subtitle template. Previously this logic was duplicated in:
+ *   - SubtitleComposition.tsx
+ *   - VideoPreview.tsx
+ *   - render/route.ts
+ *
+ * Always use this function to ensure preview and export consistency.
+ */
+export function mergeTemplateWithStyle(
+  template: SubtitleTemplate,
+  styleParams: StyleParams
+): SubtitleTemplate {
+  return {
+    ...template,
+    render: {
+      ...template.render,
+      fontFamily: styleParams.fontFamily,
+      fontSize: styleParams.fontSize,
+      fontWeight: styleParams.fontWeight,
+      primaryColor: styleParams.primaryColor,
+      secondaryColor: styleParams.secondaryColor,
+      accentColor: styleParams.accentColor,
+      textShadow: styleParams.textShadow,
+    },
+    animation: {
+      ...template.animation,
+      entrance: styleParams.animation,
+    },
+  };
+}
+
 export interface AnalysisResult {
   emotions: EmotionTag[];
   theme: string[];
@@ -224,6 +258,8 @@ export interface StyleParams {
   decoration: DecorationType[];
   fontWeight: number;
   textShadow: boolean;
+  /** 逐词弹跳动画 (per-word pop animation) — 默认关闭，用户手动开启 */
+  wordPop?: boolean;
 }
 
 export interface FileInfo {

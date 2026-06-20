@@ -44,6 +44,8 @@ export const AnalyzeRequestSchema = z.object({
   lyrics: z.array(LyricLineSchema).min(1, "At least one lyric line is required"),
   audioUrl: z.string().optional(),
   stylePrompt: z.string().optional(),
+  /** AI-identified song title from verify-lyrics, used to enrich analysis context */
+  songTitle: z.string().optional(),
 });
 
 /** POST /api/template */
@@ -74,9 +76,17 @@ export const RenderRequestSchema = z.object({
   subtitleTemplate: z.unknown().optional(),
 });
 
+/** POST /api/verify-lyrics */
+export const VerifyLyricsRequestSchema = z.object({
+  lyrics: z.array(LyricLineSchema).min(1, "At least one lyric line is required"),
+  /** Optional: song title + artist for better AI search accuracy */
+  songQuery: z.string().optional(),
+});
+
 // ── Type exports ──
 
 export type AnalyzeRequest = z.infer<typeof AnalyzeRequestSchema>;
 export type TemplateRequest = z.infer<typeof TemplateRequestSchema>;
 export type TranscribeRequest = z.infer<typeof TranscribeRequestSchema>;
 export type RenderRequest = z.infer<typeof RenderRequestSchema>;
+export type VerifyLyricsRequest = z.infer<typeof VerifyLyricsRequestSchema>;

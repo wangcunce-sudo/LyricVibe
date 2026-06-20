@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState, useMemo } from "react";
-import { Play, Pause, Volume2, VolumeX, Gauge, Loader2, RefreshCw, RotateCcw } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, Gauge, Loader2, RotateCcw } from "lucide-react";
 import { cn, formatTime } from "@/lib/utils";
 import { logger } from "@/lib/logger";
 import type {
@@ -11,7 +11,7 @@ import type {
   AspectRatio,
   SubtitleTemplate,
 } from "@/lib/types";
-import { FILTER_PRESETS, styleParamsToTemplate } from "@/lib/types";
+import { FILTER_PRESETS, styleParamsToTemplate, mergeTemplateWithStyle } from "@/lib/types";
 import { toneEngine } from "@/lib/tone-engine";
 import { Player } from "@remotion/player";
 import { SubtitleComposition } from "@/lib/remotion/SubtitleComposition";
@@ -63,29 +63,14 @@ export function VideoPreview({
   const [engineReady, setEngineReady] = useState(false);
   const [beats, setBeats] = useState<BeatInfo[] | undefined>(undefined);
   const audioInitializedRef = useRef(false);
+  const [restartKey, setRestartKey] = useState(0);
 
   const hasVideo = !!videoUrl;
 
-  // ── Merge styleParams into subtitleTemplate ──
+  // ── Merge styleParams into subtitleTemplate (single source of truth) ──
   const template = useMemo(() => {
     const base = subtitleTemplate || styleParamsToTemplate(styleParams);
-    return {
-      ...base,
-      render: {
-        ...base.render,
-        fontFamily: styleParams.fontFamily,
-        fontSize: styleParams.fontSize,
-        fontWeight: styleParams.fontWeight,
-        primaryColor: styleParams.primaryColor,
-        secondaryColor: styleParams.secondaryColor,
-        accentColor: styleParams.accentColor,
-        textShadow: styleParams.textShadow,
-      },
-      animation: {
-        ...base.animation,
-        entrance: styleParams.animation,
-      },
-    };
+    return mergeTemplateWithStyle(base, styleParams);
   }, [subtitleTemplate, styleParams]);
 
   // ── Find current lyric line and progress ──
@@ -269,18 +254,34 @@ export function VideoPreview({
     [duration, hasVideo, onTimeUpdate]
   );
 
-  // ── Full restart handler: reset video, audio engine, and seek to 0 ──
+  // ── Full restart handler: completely reset everything from 0 ──
   const handleRestart = useCallback(() => {
-    // Seek everything to 0
-    onTimeUpdate(0);
+    // 1. Seek audio engine to 0 and pause first
     toneEngine.seek(0);
+    toneEngine.pause();
+    // 2. Reset video to 0
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
+      videoRef.current.pause();
     }
-    // If currently playing, keep playing from start
-    if (!isPlaying) {
-      onPlayPause(); // start playing
-    }
+    // 3. Reset time state to 0
+    onTimeUpdate(0);
+    // 4. Force Remotion Player remount (key change) — ensures fresh subtitle animation
+    setRestartKey(k => k + 1);
+    // 5. Start playing after a microtask to let React remount first
+    setTimeout(() => {
+      if (!isPlaying) {
+        onPlayPause(); // start playing
+      } else {
+        // If already in "playing" state, we need to re-trigger play
+        // Pause first then play to force fresh start
+        toneEngine.play();
+        if (videoRef.current) {
+          videoRef.current.currentTime = 0;
+          videoRef.current.play().catch(() => {});
+        }
+      }
+    }, 50);
   }, [isPlaying, onTimeUpdate, onPlayPause]);
 
   // ── Keyboard shortcuts ──
@@ -352,6 +353,7 @@ export function VideoPreview({
             替代原来的 Canvas，100% 还原 Remotion 渲染效果 */}
         <div className="absolute inset-0 z-10 pointer-events-none">
           <Player
+            key={restartKey}
             component={SubtitleComposition}
             inputProps={{
               currentLine,
@@ -413,49 +415,14 @@ export function VideoPreview({
           </button>
         )}
 
-        {/* Restart button — full rewind to 0 */}
+        {/* Restart button — complete replay from 0 with fresh subtitle animation */}
         {audioLoaded && (
           <button
             onClick={handleRestart}
             className="absolute top-3 left-3 z-20 p-2 rounded-full bg-white/10 hover:bg-white/30 backdrop-blur transition-colors"
-            title="重新播放"
+            title="从头播放"
           >
             <RotateCcw className="w-4 h-4 text-white" />
-          </button>
-        )}
-
-        {/* Refresh button — reload audio engine */}
-        {audioLoaded && (
-          <button
-            onClick={() => {
-              toneEngine.dispose();
-              setAudioLoaded(false);
-              setEngineReady(false);
-              audioInitializedRef.current = false;
-              toneEngine.setCallbacks({
-                onTimeUpdate: (time: number) => {
-                  onTimeUpdate(time);
-                },
-                onEnded: () => {
-                  onPlayPause();
-                },
-                onStateChange: () => {},
-              });
-              toneEngine.load(audioUrl).then(() => {
-                setDuration(toneEngine.duration);
-                setAudioLoaded(true);
-                setEngineReady(true);
-                audioInitializedRef.current = true;
-              }).catch((err) => {
-                logger.warn("VideoPreview", "Tone.js reload failed:", err);
-                setAudioLoaded(true);
-                setEngineReady(false);
-              });
-            }}
-            className="absolute top-3 right-3 z-20 p-2 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur transition-colors"
-            title="刷新音频引擎"
-          >
-            <RefreshCw className="w-4 h-4 text-white" />
           </button>
         )}
       </div>

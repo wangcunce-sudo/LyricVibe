@@ -36,6 +36,7 @@ import {
   OPHELIA_TEMPLATE,
   ALTERNATIVE_STYLES,
 } from "@/lib/demo-data";
+import { mergeTemplateWithStyle } from "@/lib/types";
 
 export default function CreatePage() {
   const { t } = useI18n();
@@ -69,6 +70,7 @@ export default function CreatePage() {
   const [showSpeechRecorder, setShowSpeechRecorder] = useState(false);
   const [userLyricsReady, setUserLyricsReady] = useState(false);
   const [userLyricsText, setUserLyricsText] = useState("");
+  const [songTitle, setSongTitle] = useState<string | null>(null);
 
   // 视频为必需，音频为可选；不上传音频时默认使用视频中的音轨
   const hasMedia = videoFile !== null || mode === "demo";
@@ -97,6 +99,7 @@ export default function CreatePage() {
     setStylePrompt(OPHELIA_ANALYSIS.stylePrompt);
     setStyleParams(OPHELIA_STYLE);
     setSubtitleTemplate(OPHELIA_TEMPLATE);
+    setSongTitle("Taylor Swift - Opalite");
     setShowIntro(false);
   }, []);
 
@@ -121,6 +124,39 @@ export default function CreatePage() {
           setUserLyricsReady(true);
           setUserLyricsText(data.lyrics.map((l: LyricLine) => l.text).join("\n"));
           logger.info("Transcribe", `Extracted ${data.lyrics.length} lines via WhisperX`);
+
+          // After transcribe, also verify lyrics with AI
+          const rawQuery = audioFile?.name || videoFile?.name || "";
+          const songQuery = rawQuery
+            ? rawQuery
+                .replace(/\.[^.]+$/, "")
+                .replace(/[_-]/g, " ")
+                .replace(/\b\d{2,}\b/g, "")
+                .replace(/\s{2,}/g, " ")
+                .trim()
+            : undefined;
+          fetch("/api/verify-lyrics", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lyrics: data.lyrics, songQuery }),
+          })
+            .then((res) => res.json())
+            .then((vData) => {
+              // 使用 AI 校验后的歌词
+              if (vData.verified && vData.lyrics) {
+                setLyrics(vData.lyrics);
+                setUserLyricsText(vData.lyrics.map((l: LyricLine) => l.text).join("\n"));
+              }
+              if (vData.corrections?.length > 0) {
+                logger.info("Transcribe", `歌词验证: ${vData.corrections.length} 处修正`);
+              }
+              // 使用 DeepSeek 返回的真实歌曲名
+              if (vData.songIdentified && vData.songTitle) {
+                setSongTitle(vData.songTitle);
+                logger.info("Transcribe", `识别到歌曲: ${vData.songTitle}`);
+              }
+            })
+            .catch(() => {}); // Non-critical, silently ignore
         }
       } else {
         const err = await response.json().catch(() => ({}));
@@ -133,7 +169,7 @@ export default function CreatePage() {
     } finally {
       setIsTranscribing(false);
     }
-  }, [effectiveAudioUrl]);
+  }, [effectiveAudioUrl, audioFile, videoFile]);
 
   const handleTemplateGenerate = useCallback(async () => {
     if (!templateDescription.trim()) return;
@@ -182,6 +218,8 @@ export default function CreatePage() {
         setAnalysis(OPHELIA_ANALYSIS);
         setStylePrompt(OPHELIA_ANALYSIS.stylePrompt);
         setStyleParams(OPHELIA_STYLE);
+        setTemplateDescription(OPHELIA_ANALYSIS.stylePrompt);
+        setSongTitle("Opalite 热舞 (Demo)");
       } else {
         const lyricsToAnalyze =
           lyrics.length > 0 ? lyrics : [];
@@ -198,6 +236,7 @@ export default function CreatePage() {
           body: JSON.stringify({
             lyrics: lyricsToAnalyze,
             audioUrl: effectiveAudioUrl || undefined,
+            songTitle: songTitle || undefined,
           }),
         });
 
@@ -215,7 +254,7 @@ export default function CreatePage() {
           const fallback = await fetch("/api/analyze", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ lyrics: lyricsToAnalyze }),
+            body: JSON.stringify({ lyrics: lyricsToAnalyze, songTitle: songTitle || undefined }),
           });
           if (fallback.ok) {
             const data = await fallback.json();
@@ -244,10 +283,23 @@ export default function CreatePage() {
       setShowIntro(false);
 
       // 先验证歌词，再用验证后的歌词进行分析
+      // Extract a possible song hint from the filename (AI will ignore if meaningless)
+      const rawQuery = audioFile?.name || videoFile?.name || "";
+      const songQuery = rawQuery
+        ? rawQuery
+            .replace(/\.[^.]+$/, "")           // remove extension
+            .replace(/[_-]/g, " ")             // underscores/hyphens → spaces
+            .replace(/\b\d{2,}\b/g, "")        // remove numbers
+            .replace(/\s{2,}/g, " ")           // collapse spaces
+            .trim()
+        : undefined;
       fetch("/api/verify-lyrics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lyrics: extractedLyrics }),
+        body: JSON.stringify({
+          lyrics: extractedLyrics,
+          songQuery,
+        }),
       })
         .then((res) => res.json())
         .then((data) => {
@@ -256,14 +308,22 @@ export default function CreatePage() {
             logger.info("CreatePage", `歌词验证: ${data.corrections.length} 处修正`);
             setLyrics(finalLyrics);
           }
-          // 用验证后的歌词进行分析
-          return finalLyrics;
+          // 使用 DeepSeek 返回的真实歌曲名（而非文件名）
+          const identifiedSong = (data.songIdentified && data.songTitle)
+            ? data.songTitle
+            : null;
+          if (identifiedSong) {
+            setSongTitle(identifiedSong);
+            logger.info("CreatePage", `识别到歌曲: ${identifiedSong}`);
+          }
+          // 用验证后的歌词 + AI识别的歌曲名进行分析
+          return { finalLyrics, identifiedSong };
         })
         .catch((err) => {
           logger.warn("CreatePage", "歌词验证失败，使用原始歌词:", err);
-          return extractedLyrics;
+          return { finalLyrics: extractedLyrics, identifiedSong: null as string | null };
         })
-        .then((finalLyrics) => {
+        .then(({ finalLyrics, identifiedSong }) => {
           setIsAnalyzing(true);
           return fetch("/api/analyze", {
             method: "POST",
@@ -271,6 +331,7 @@ export default function CreatePage() {
             body: JSON.stringify({
               lyrics: finalLyrics,
               audioUrl: effectiveAudioUrl || undefined,
+              songTitle: identifiedSong || undefined,
             }),
           })
             .then((res) => res.json())
@@ -420,28 +481,12 @@ export default function CreatePage() {
 
       logger.info("export", "开始渲染请求...");
 
-      // Merge styleParams into subtitleTemplate for export consistency.
-      // This ensures Remotion render receives the same parameter values as Canvas preview.
+      // Merge styleParams into subtitleTemplate (single source of truth)
       const mergedTemplate = subtitleTemplate
-        ? {
-            ...subtitleTemplate,
-            render: {
-              ...subtitleTemplate.render,
-              fontFamily: styleParams.fontFamily,
-              fontSize: styleParams.fontSize,
-              fontWeight: styleParams.fontWeight,
-              primaryColor: styleParams.primaryColor,
-              secondaryColor: styleParams.secondaryColor,
-              accentColor: styleParams.accentColor,
-              textShadow: styleParams.textShadow,
-            },
-            animation: {
-              ...subtitleTemplate.animation,
-              entrance: styleParams.animation,
-            },
-            // Carry decoration so Composition can use it directly
+        ? ({
+            ...mergeTemplateWithStyle(subtitleTemplate, styleParams),
             decoration: styleParams.decoration,
-          } as SubtitleTemplate & { decoration?: string[] }
+          } as SubtitleTemplate & { decoration?: string[] })
         : undefined;
 
       const response = await fetch("/api/render", {
@@ -699,6 +744,7 @@ export default function CreatePage() {
               onTemplateDescriptionChange={setTemplateDescription}
               onTemplateGenerate={handleTemplateGenerate}
               onSubtitleTemplateChange={setSubtitleTemplate}
+              songTitle={songTitle}
             />
           </div>
         )}

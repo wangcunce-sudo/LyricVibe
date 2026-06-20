@@ -20,6 +20,7 @@ import fsPromises from "fs/promises";
 import crypto from "crypto";
 import { logger } from "@/lib/logger";
 import { RenderRequestSchema } from "@/lib/validation";
+import { mergeTemplateWithStyle } from "@/lib/types";
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -208,26 +209,10 @@ export async function POST(request: NextRequest) {
     if (RENDER_SERVER_URL) {
       logger.info("render", `转发到渲染服务器: ${RENDER_SERVER_URL}`);
 
-      // Merge styleParams into subtitleTemplate for consistency with frontend
-      const mergedTemplate = body.subtitleTemplate
-        ? {
-            ...body.subtitleTemplate,
-            render: {
-              ...body.subtitleTemplate.render,
-              fontFamily: (styleParams?.fontFamily) || body.subtitleTemplate.render.fontFamily,
-              fontSize: (styleParams?.fontSize) || body.subtitleTemplate.render.fontSize,
-              fontWeight: (styleParams?.fontWeight) || body.subtitleTemplate.render.fontWeight,
-              primaryColor: (styleParams?.primaryColor) || body.subtitleTemplate.render.primaryColor,
-              secondaryColor: (styleParams?.secondaryColor) || body.subtitleTemplate.render.secondaryColor,
-              accentColor: (styleParams?.accentColor) || body.subtitleTemplate.render.accentColor,
-              textShadow: (styleParams?.textShadow) ?? body.subtitleTemplate.render.textShadow,
-            },
-            animation: {
-              ...body.subtitleTemplate.animation,
-              entrance: (styleParams?.animation) || body.subtitleTemplate.animation.entrance,
-            },
-          }
-        : undefined;
+      // Merge styleParams into subtitleTemplate (single source of truth)
+      const mergedTemplate = body.subtitleTemplate && styleParams
+        ? mergeTemplateWithStyle(body.subtitleTemplate as import("@/lib/types").SubtitleTemplate, styleParams)
+        : body.subtitleTemplate || undefined;
 
       const renderRes = await fetch(`${RENDER_SERVER_URL}/renders`, {
         method: "POST",

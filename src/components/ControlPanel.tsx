@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, memo } from "react";
+import { useState, memo, useEffect } from "react";
 import {
   Palette,
   Sparkles,
@@ -17,7 +17,6 @@ import type {
   StyleParams,
   FilterType,
   AnimationType,
-  DecorationType,
   LyricLine,
 } from "@/lib/types";
 import {
@@ -25,9 +24,8 @@ import {
   FILTER_PRESETS,
   STYLE_TEMPLATES,
   ANIMATION_LABELS,
-  DECORATION_LABELS,
 } from "@/lib/types";
-import { OPHELIA_STYLE, OPHELIA_TEMPLATE } from "@/lib/demo-data";
+import { PRESET_TEMPLATES, PRESET_STYLES, OPHELIA_TEMPLATE, OPHELIA_STYLE } from "@/lib/demo-data";
 import type { SubtitleTemplate } from "@/lib/types";
 
 interface ControlPanelProps {
@@ -54,6 +52,8 @@ interface ControlPanelProps {
   onTemplateDescriptionChange?: (desc: string) => void;
   onTemplateGenerate?: () => void;
   onSubtitleTemplateChange?: (template: SubtitleTemplate) => void;
+  /** AI 识别到的歌曲名 */
+  songTitle?: string | null;
 }
 
 type Tab = "style" | "filter" | "audio" | "advanced";
@@ -81,6 +81,7 @@ export function ControlPanel({
   onTemplateDescriptionChange,
   onTemplateGenerate,
   onSubtitleTemplateChange,
+  songTitle,
 }: ControlPanelProps) {
   const { locale, t } = useI18n();
   const cpDict = t("controlPanel");
@@ -137,6 +138,7 @@ export function ControlPanel({
             onTemplateGenerate={onTemplateGenerate}
             onSubtitleTemplateChange={onSubtitleTemplateChange}
             subtitleTemplate={subtitleTemplate}
+            songTitle={songTitle}
           />
         )}
 
@@ -188,6 +190,8 @@ function StyleTab({
   onTemplateDescriptionChange,
   onTemplateGenerate,
   onSubtitleTemplateChange,
+  subtitleTemplate,
+  songTitle,
 }: {
   analysis: AnalysisResult | null;
   styleParams: StyleParams;
@@ -206,21 +210,33 @@ function StyleTab({
   onTemplateGenerate?: () => void;
   onSubtitleTemplateChange?: (template: SubtitleTemplate) => void;
   subtitleTemplate?: SubtitleTemplate;
+  songTitle?: string | null;
 }) {
   const { locale, t } = useI18n();
   const dict = t("controlPanel").style;
+
+  // Sync localPrompt when stylePrompt prop changes (e.g. after AI analysis)
+  useEffect(() => {
+    if (stylePrompt) {
+      onLocalPromptChange(stylePrompt);
+    }
+  }, [stylePrompt]);
 
   // Store subtitleTemplate in a local variable (workaround for Turbopack closure tracking)
   // eslint-disable-next-line prefer-const
   const _subtitleTemplate = (arguments as unknown as [Record<string, unknown>])[0]?.subtitleTemplate as SubtitleTemplate | undefined;
 
-  // Pre-compute preset active states outside JSX to avoid closure issues
+  // Pre-compute 8 preset active states outside JSX to avoid closure issues
   const subtitlePresets = [
-    { name: "Opalite 热舞", desc: "Impact粗体·弹跳·高亮", color: "#00E5FF", template: OPHELIA_TEMPLATE, style: OPHELIA_STYLE, hint: undefined as string | undefined, isTemplate: true },
-    { name: "居中弹跳", desc: "蓝白交替·跳动", color: "#4FC3F7", template: undefined as SubtitleTemplate | undefined, style: undefined as StyleParams | undefined, hint: "蓝白弹跳 左右交替 发光", isTemplate: false },
-    { name: "弧形优雅", desc: "金色弯曲·衬线", color: "#FFD700", template: undefined as SubtitleTemplate | undefined, style: undefined as StyleParams | undefined, hint: "居中弧形 金色 优雅衬线体", isTemplate: false },
-    { name: "玻璃Vlog", desc: "左下毛玻璃·手写", color: "#69F0AE", template: undefined as SubtitleTemplate | undefined, style: undefined as StyleParams | undefined, hint: "底部玻璃背景 手写体 滑入", isTemplate: false },
-    { name: "霓虹跳动", desc: "顶部波浪·描边", color: "#FF6B6B", template: undefined as SubtitleTemplate | undefined, style: undefined as StyleParams | undefined, hint: "顶部波浪 霓虹描边 跳动", isTemplate: false },
+    { key: "opalite-flash",  name: "Opalite 蓝白闪光", desc: "白蓝交替·跳动·TikTok热舞", color: "#4FC3F7", template: OPHELIA_TEMPLATE, style: OPHELIA_STYLE },
+    { key: "douyin-kapai",   name: "抖音卡点风",   desc: "Kinetic·鼓点·厚描边",     color: "#FFD700", template: PRESET_TEMPLATES["douyin-kapai"],   style: PRESET_STYLES["douyin-kapai"] },
+    { key: "lyrical-ballad", name: "抒情民谣风",   desc: "Georgia衬线·淡入·温暖",   color: "#FFB6C1", template: PRESET_TEMPLATES["lyrical-ballad"], style: PRESET_STYLES["lyrical-ballad"] },
+    { key: "neon-cyberpunk", name: "霓虹赛博朋克", desc: "荧光·弧形·发光·交替",      color: "#00E5FF", template: PRESET_TEMPLATES["neon-cyberpunk"], style: PRESET_STYLES["neon-cyberpunk"] },
+    { key: "japanese-fresh", name: "日系清新风",   desc: "手写体·长短自适应·弹跳",   color: "#FFB7C5", template: PRESET_TEMPLATES["japanese-fresh"], style: PRESET_STYLES["japanese-fresh"] },
+    { key: "hiphop-street",  name: "嘻哈街头风",   desc: "超粗体·随机跳·6px描边",    color: "#FF6600", template: PRESET_TEMPLATES["hiphop-street"],  style: PRESET_STYLES["hiphop-street"] },
+    { key: "minimal-business", name: "简约商务风", desc: "Inter·淡入·下弧·克制",     color: "#A0C4FF", template: PRESET_TEMPLATES["minimal-business"], style: PRESET_STYLES["minimal-business"] },
+    { key: "romantic-lovesong", name: "浪漫情歌风", desc: "衬线·渐变·波浪·粉色",     color: "#FF69B4", template: PRESET_TEMPLATES["romantic-lovesong"], style: PRESET_STYLES["romantic-lovesong"] },
+    { key: "dynamic-highlight", name: "动态多词高亮", desc: "逐词闪烁·回弹·长短自适应", color: "#00E5FF", template: PRESET_TEMPLATES["dynamic-highlight"], style: PRESET_STYLES["dynamic-highlight"] },
   ] as const;
 
   return (
@@ -294,6 +310,24 @@ function StyleTab({
             </span>
           </div>
 
+          {/* Song identified by AI */}
+          {songTitle && (
+            <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200">
+              <div className="flex items-center gap-2">
+                <Music className="w-4 h-4 text-amber-500" />
+                <span className="text-xs font-semibold text-amber-700">
+                  DeepSeek 识别到歌曲
+                </span>
+              </div>
+              <p className="text-sm font-bold text-amber-800 mt-1">
+                🎵 {songTitle}
+              </p>
+              <p className="text-[10px] text-amber-500 mt-0.5">
+                AI 已根据原曲歌词校验语音识别，并基于歌曲背景分析情感与风格
+              </p>
+            </div>
+          )}
+
           {/* Style Prompt */}
           <div>
             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
@@ -323,7 +357,7 @@ function StyleTab({
             </div>
           </div>
 
-          {/* Template Description (字幕模板) */}
+          {/* Template Description (字幕模板) — AI 自然语言生成 */}
           {onTemplateDescriptionChange && onTemplateGenerate && (
             <div>
               <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
@@ -349,53 +383,26 @@ function StyleTab({
                   <Sparkles className="w-3.5 h-3.5" />
                 </button>
               </div>
-              {/* 快捷提示词 */}
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {[
-                  "蓝白弹跳 左右交替 发光",
-                  "居中弧形 金色 优雅衬线体",
-                  "底部玻璃背景 手写体 滑入",
-                  "顶部波浪 霓虹描边 跳动",
-                ].map((hint) => (
-                  <button
-                    key={hint}
-                    onClick={() => {
-                      onTemplateDescriptionChange(hint);
-                      // Use requestAnimationFrame instead of setTimeout for deterministic ordering
-                      requestAnimationFrame(() => onTemplateGenerate());
-                    }}
-                    className="px-2 py-1 text-[10px] bg-gray-100 hover:bg-sky-100 text-gray-500 hover:text-sky-600 rounded-md transition-colors"
-                  >
-                    {hint}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
 
-          {/* Quick subtitle template presets */}
+          {/* 动效字幕风格 — 8 种内置预设 */}
           <div>
             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              🎨 字幕模板预设
+              🎨 动效字幕风格
             </label>
             <div className="grid grid-cols-2 gap-2 mt-2">
               {subtitlePresets.map((preset) => {
-                // Determine if this preset is currently active
-                const isActive = preset.isTemplate
-                  ? _subtitleTemplate?.name === preset.template?.name
-                  : false;
+                const isActive = _subtitleTemplate?.name === preset.template?.name;
                 return (
                 <button
-                  key={preset.name}
+                  key={preset.key}
                   onClick={() => {
-                    if (preset.template) {
-                      onSubtitleTemplateChange?.(preset.template);
-                      if (preset.style) {
-                        onStyleParamsChange(preset.style);
-                      }
-                    } else if (preset.hint) {
-                      onTemplateDescriptionChange?.(preset.hint);
-                      requestAnimationFrame(() => onTemplateGenerate?.());
+                    if (onSubtitleTemplateChange) {
+                      onSubtitleTemplateChange(preset.template);
+                    }
+                    if (onStyleParamsChange) {
+                      onStyleParamsChange(preset.style);
                     }
                   }}
                   className={cn(
@@ -725,42 +732,25 @@ const AdvancedTab = memo(function AdvancedTab({
         </div>
       </div>
 
-      {/* Decoration */}
-      <div>
+      {/* Word Pop toggle — 逐词弹跳动画 */}
+      <div className="flex items-center justify-between">
         <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-          {dict.decoration}
+          逐词弹跳
         </label>
-        <div className="grid grid-cols-3 gap-2 mt-2">
-          {(
-            Object.entries(DECORATION_LABELS) as [DecorationType, string][]
-          ).map(([key]) => (
-            <button
-              key={key}
-              onClick={() => {
-                const current = styleParams.decoration;
-                const updated = current.includes(key)
-                  ? current.filter((d) => d !== key)
-                  : [...current.filter((d) => d !== "none"), key].filter(
-                      (d) => d !== "none" || key === "none"
-                    );
-                update({
-                  decoration:
-                    updated.length === 0 || key === "none"
-                      ? ["none"]
-                      : updated,
-                });
-              }}
-              className={cn(
-                "px-2 py-1.5 rounded-lg text-xs font-medium transition-all",
-                styleParams.decoration.includes(key)
-                  ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white"
-                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-              )}
-            >
-              {(dict.decorationLabels as Record<string, string>)[key]}
-            </button>
-          ))}
-        </div>
+        <button
+          onClick={() => update({ wordPop: !styleParams.wordPop })}
+          className={cn(
+            "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+            styleParams.wordPop ? "bg-sky-500" : "bg-gray-300"
+          )}
+        >
+          <span
+            className={cn(
+              "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+              styleParams.wordPop ? "translate-x-6" : "translate-x-1"
+            )}
+          />
+        </button>
       </div>
 
       {/* Text shadow toggle */}

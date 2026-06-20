@@ -3,8 +3,9 @@
  * Accepts lyrics text (or structured LyricLine[]) and returns
  * AI-powered emotional analysis + style prompt + parsed style params.
  *
- * Also accepts { audioUrl, lyrics } for cases where lyrics have been
- * extracted from audio (via Web Speech API or Whisper).
+ * Also accepts:
+ *   - audioUrl: for cases where lyrics have been extracted from audio
+ *   - songTitle: AI-identified song title from verify-lyrics, used to enrich analysis context
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -24,10 +25,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { lyrics, audioUrl } = parsed.data;
+    const { lyrics, audioUrl, songTitle } = parsed.data;
 
     // Step 1: Analyze lyrics for emotions, theme, style prompt
-    const analysis = await analyzeLyrics(lyrics);
+    const analysis = await analyzeLyrics(lyrics, songTitle || undefined);
 
     // Step 2: Parse the style prompt into concrete StyleParams
     const styleParams = await parseStylePrompt(

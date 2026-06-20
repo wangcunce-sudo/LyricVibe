@@ -12,8 +12,55 @@
 import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import type { LyricLine, StyleParams, SubtitleTemplate } from "../types";
-import { styleParamsToTemplate } from "../types";
+import { styleParamsToTemplate, mergeTemplateWithStyle } from "../types";
 import type { BeatInfo } from "../beat-detector";
+
+// ============================================================
+// Smart word segmentation — supports CJK + Latin text
+// ============================================================
+
+/**
+ * Segment text into "words" for per-word animation.
+ *
+ * Uses Intl.Segmenter (available in Node 16+, Chromium 87+) for CJK text
+ * with word-level granularity. Falls back to space-splitting for Latin text
+ * and character-level splitting for CJK if Intl.Segmenter is unavailable.
+ */
+function segmentWords(text: string): string[] {
+  // Try Intl.Segmenter first (best for Chinese/Japanese/Korean word boundaries)
+  try {
+    if (typeof Intl !== "undefined" && Intl.Segmenter) {
+      const segmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
+      const segments = [...segmenter.segment(text)]
+        .filter(s => s.isWordLike)
+        .map(s => s.segment);
+      if (segments.length > 0) return segments;
+    }
+  } catch {
+    // Intl.Segmenter not available — fall through
+  }
+
+  // Fallback: check if text is primarily CJK
+  const cjkCount = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/g) || []).length;
+  if (cjkCount > text.length * 0.3) {
+    // CJK text: split by character, then merge Latin/number runs
+    const result: string[] = [];
+    let buffer = "";
+    for (const ch of text) {
+      if (/[a-zA-Z0-9]/.test(ch)) {
+        buffer += ch;
+      } else {
+        if (buffer) { result.push(buffer); buffer = ""; }
+        if (ch.trim()) result.push(ch);
+      }
+    }
+    if (buffer) result.push(buffer);
+    return result.length > 0 ? result : [text];
+  }
+
+  // Latin text: space-split
+  return text.split(/\s+/).filter(Boolean);
+}
 
 // ============================================================
 // SubtitleComposition Props
@@ -61,25 +108,12 @@ export const SubtitleComposition: React.FC<SubtitleCompositionProps> = ({
   // Apply speed: time passes faster with higher speed
   const currentTimeSec = (frame / fps) * speed;
 
-  // Merge styleParams into subtitleTemplate
+  // Merge styleParams into subtitleTemplate (single source of truth)
   const template = React.useMemo(() => {
     const base = subtitleTemplate || styleParamsToTemplate(styleParams);
+    const merged = mergeTemplateWithStyle(base, styleParams);
     return {
-      ...base,
-      render: {
-        ...base.render,
-        fontFamily: styleParams.fontFamily,
-        fontSize: styleParams.fontSize,
-        fontWeight: styleParams.fontWeight,
-        primaryColor: styleParams.primaryColor,
-        secondaryColor: styleParams.secondaryColor,
-        accentColor: styleParams.accentColor,
-        textShadow: styleParams.textShadow,
-      },
-      animation: {
-        ...base.animation,
-        entrance: styleParams.animation,
-      },
+      ...merged,
       decoration: styleParams.decoration,
     } as SubtitleTemplate & { decoration?: string[] };
   }, [subtitleTemplate, styleParams]);
@@ -101,6 +135,7 @@ export const SubtitleComposition: React.FC<SubtitleCompositionProps> = ({
       height={height}
       wordTimestamps={currentLine.words}
       beats={beats}
+      wordPop={styleParams.wordPop ?? false}
     />
   );
 };
@@ -122,6 +157,7 @@ const LyricTextRenderer: React.FC<{
   height: number;
   wordTimestamps?: import("../types").WordTimestamp[];
   beats?: BeatInfo[];
+  wordPop?: boolean;
 }> = ({
   text,
   progress,
@@ -134,6 +170,7 @@ const LyricTextRenderer: React.FC<{
   height,
   wordTimestamps,
   beats,
+  wordPop = false,
 }) => {
   const { layout, animation, render: renderParams } = template;
 
@@ -398,7 +435,8 @@ const LyricTextRenderer: React.FC<{
 
   // Keyword highlighting
   const highlightWords = renderParams.highlightWords || [];
-  const words = displayText.split(" ");
+  // Smart word splitting: use Intl.Segmenter for CJK text, fall back to space-splitting
+  const words = segmentWords(displayText);
   const wordCount = words.length;
 
   // ── 节拍驱动增强系数 ──
@@ -472,41 +510,45 @@ const LyricTextRenderer: React.FC<{
     <div style={containerStyle}>
       <div style={{ position: "relative", display: "inline-block" }}>
         <span style={baseStyle}>
-          {words.map((word, i) => {
-            const cleanWord = word.replace(/[^a-zA-Z0-9']/g, "").toLowerCase();
-            const isHighlighted = highlightWords.some(
-              (hw) => hw.toLowerCase() === cleanWord
-            );
-            const flashAlpha = isHighlighted
-              ? 0.7 + 0.3 * Math.sin(frame * 0.3)
-              : 1;
-            const wordAnim = getWordAnimStyle(i);
-            return (
-              <span key={i}>
-                {i > 0 && " "}
-                <span
-                  style={{
-                    ...wordAnim,
-                    color: isHighlighted
-                      ? renderParams.accentColor
-                      : textColor,
-                    opacity: isHighlighted
-                      ? flashAlpha * (wordAnim.opacity as number || 1)
-                      : (wordAnim.opacity || 1),
-                    fontSize: isHighlighted
-                      ? `${renderParams.fontSize * 1.08}px`
-                      : undefined,
-                    fontWeight: isHighlighted
-                      ? Math.min(900, renderParams.fontWeight + 100)
-                      : renderParams.fontWeight,
-                    transition: "color 0.1s ease",
-                  }}
-                >
-                  {word}
+          {wordPop ? (
+            words.map((word, i) => {
+              const cleanWord = word.replace(/[^a-zA-Z0-9']/g, "").toLowerCase();
+              const isHighlighted = highlightWords.some(
+                (hw) => hw.toLowerCase() === cleanWord
+              );
+              const flashAlpha = isHighlighted
+                ? 0.7 + 0.3 * Math.sin(frame * 0.3)
+                : 1;
+              const wordAnim = getWordAnimStyle(i);
+              return (
+                <span key={i}>
+                  {i > 0 && " "}
+                  <span
+                    style={{
+                      ...wordAnim,
+                      color: isHighlighted
+                        ? renderParams.accentColor
+                        : textColor,
+                      opacity: isHighlighted
+                        ? flashAlpha * (wordAnim.opacity as number || 1)
+                        : (wordAnim.opacity || 1),
+                      fontSize: isHighlighted
+                        ? `${renderParams.fontSize * 1.08}px`
+                        : undefined,
+                      fontWeight: isHighlighted
+                        ? Math.min(900, renderParams.fontWeight + 100)
+                        : renderParams.fontWeight,
+                      transition: "color 0.1s ease",
+                    }}
+                  >
+                    {word}
+                  </span>
                 </span>
-              </span>
-            );
-          })}
+              );
+            })
+          ) : (
+            <span>{displayText}</span>
+          )}
         </span>
       </div>
     </div>
