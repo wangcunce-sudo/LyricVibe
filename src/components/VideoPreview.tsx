@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState, useMemo } from "react";
-import { Play, Pause, Volume2, VolumeX, Gauge, Loader2, RefreshCw } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, Gauge, Loader2, RefreshCw, RotateCcw } from "lucide-react";
 import { cn, formatTime } from "@/lib/utils";
 import { logger } from "@/lib/logger";
 import type {
@@ -269,6 +269,20 @@ export function VideoPreview({
     [duration, hasVideo, onTimeUpdate]
   );
 
+  // ── Full restart handler: reset video, audio engine, and seek to 0 ──
+  const handleRestart = useCallback(() => {
+    // Seek everything to 0
+    onTimeUpdate(0);
+    toneEngine.seek(0);
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+    }
+    // If currently playing, keep playing from start
+    if (!isPlaying) {
+      onPlayPause(); // start playing
+    }
+  }, [isPlaying, onTimeUpdate, onPlayPause]);
+
   // ── Keyboard shortcuts ──
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -399,7 +413,18 @@ export function VideoPreview({
           </button>
         )}
 
-        {/* Refresh button */}
+        {/* Restart button — full rewind to 0 */}
+        {audioLoaded && (
+          <button
+            onClick={handleRestart}
+            className="absolute top-3 left-3 z-20 p-2 rounded-full bg-white/10 hover:bg-white/30 backdrop-blur transition-colors"
+            title="重新播放"
+          >
+            <RotateCcw className="w-4 h-4 text-white" />
+          </button>
+        )}
+
+        {/* Refresh button — reload audio engine */}
         {audioLoaded && (
           <button
             onClick={() => {
@@ -428,7 +453,7 @@ export function VideoPreview({
               });
             }}
             className="absolute top-3 right-3 z-20 p-2 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur transition-colors"
-            title="刷新视频"
+            title="刷新音频引擎"
           >
             <RefreshCw className="w-4 h-4 text-white" />
           </button>

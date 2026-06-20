@@ -69,11 +69,12 @@ Analyze the lyrics for:
 3. **Tempo feel**: "slow", "medium", or "fast" based on lyrical rhythm and density.
 4. **Color palette**: 3 HEX colors (primary, secondary, accent) that match the emotional tone.
 5. **Font style**: A font direction suggestion (e.g., "bold sans-serif", "elegant serif", "handwritten cursive", "retro typewriter").
-6. **Style Prompt**: A single paragraph describing the ideal subtitle visual style — include font feel, color mood, animation personality, decoration ideas, and overall atmosphere. Write it as a creative brief for a motion designer. Keep it under 80 words.
+6. **Style Prompt**: A short, keyword-dense description of the ideal subtitle visual style. This will be fed into a subtitle template generator. Describe using keywords like: font type, colors, position, animation style, background type, glow/stroke effects, curvature. Keep it under 60 words. Use the SAME LANGUAGE as the lyrics — if lyrics are Chinese, write the style prompt in Chinese; if English, write in English.
 
 Output ONLY valid JSON, no markdown or explanation.`;
 
-const ANALYSIS_USER_PROMPT = (lyrics: string) => `Analyze these lyrics:
+const ANALYSIS_USER_PROMPT = (lyrics: string, isChinese: boolean) => `Analyze these lyrics:
+${isChinese ? "(Note: these are Chinese lyrics. Output emotion labels in English, but write the stylePrompt in Chinese as a keyword-dense subtitle template description.)" : ""}
 
 ${lyrics}`;
 
@@ -81,19 +82,29 @@ ${lyrics}`;
 // Default analysis (fallback when API is unavailable)
 // ============================================================
 
+/** Detect if the lyrics text is primarily Chinese */
+function isChineseLyrics(lyrics: LyricLine[]): boolean {
+  const text = lyrics.map((l) => l.text).join("");
+  const chineseChars = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
+  return chineseChars > text.length * 0.3;
+}
+
 function getDefaultAnalysis(lyrics: LyricLine[]): AnalysisResult {
   const text = lyrics.map((l) => l.text).join(" ");
   const wordCount = text.split(/\s+/).length;
   const tempo = wordCount / (lyrics.length || 1) > 6 ? "fast" : wordCount / (lyrics.length || 1) > 3 ? "medium" : "slow";
 
+  const isChinese = isChineseLyrics(lyrics);
+
   return {
     emotions: [{ label: "calmness", intensity: 0.7 }],
-    theme: ["reflective", "personal"],
+    theme: isChinese ? ["沉思", "个人"] : ["reflective", "personal"],
     tempo: tempo as "slow" | "medium" | "fast",
     suggestedPalette: ["#FFFFFF", "#E0E0E0", "#FF6B6B"],
     suggestedFontStyle: "clean sans-serif",
-    stylePrompt:
-      "Clean modern typography with white text on a subtle dark overlay. Gentle fade-in animations for each line. Minimal and elegant — let the words speak for themselves. Slight text shadow for depth.",
+    stylePrompt: isChinese
+      ? "现代简约无衬线字体，白色主字配淡蓝辅色，居中淡入动画，柔和文字阴影，半透明深色背景。简洁、优雅、叙述感。"
+      : "Clean modern typography with white text on a subtle dark overlay. Gentle fade-in animations for each line. Minimal and elegant — let the words speak for themselves. Slight text shadow for depth.",
   };
 }
 
@@ -112,6 +123,7 @@ export async function analyzeLyrics(
   }
 
   const lyricsText = lyrics.map((l) => l.text).join("\n");
+  const isChinese = isChineseLyrics(lyrics);
 
   try {
     const controller = new AbortController();
@@ -120,10 +132,10 @@ export async function analyzeLyrics(
     let result: AnalysisResult;
 
     if (provider === "anthropic") {
-      result = await callAnthropic(lyricsText, controller.signal);
+      result = await callAnthropic(lyricsText, controller.signal, isChinese);
     } else {
       // Both OpenAI and DeepSeek use OpenAI-compatible API
-      result = await callOpenAICompat(lyricsText, controller.signal, provider);
+      result = await callOpenAICompat(lyricsText, controller.signal, provider, isChinese);
     }
 
     clearTimeout(timeout);
@@ -137,7 +149,8 @@ export async function analyzeLyrics(
 async function callOpenAICompat(
   lyricsText: string,
   signal: AbortSignal,
-  provider: "openai" | "deepseek"
+  provider: "openai" | "deepseek",
+  isChinese: boolean = false
 ): Promise<AnalysisResult> {
   const config = getProviderConfig(provider);
 
@@ -145,7 +158,7 @@ async function callOpenAICompat(
     model: config.model,
     messages: [
       { role: "system", content: ANALYSIS_SYSTEM_PROMPT },
-      { role: "user", content: ANALYSIS_USER_PROMPT(lyricsText) },
+      { role: "user", content: ANALYSIS_USER_PROMPT(lyricsText, isChinese) },
     ],
     temperature: 0.7,
     max_tokens: 800,
@@ -180,7 +193,8 @@ async function callOpenAICompat(
 
 async function callAnthropic(
   lyricsText: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  isChinese: boolean = false
 ): Promise<AnalysisResult> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -194,7 +208,7 @@ async function callAnthropic(
       max_tokens: 800,
       system: ANALYSIS_SYSTEM_PROMPT,
       messages: [
-        { role: "user", content: ANALYSIS_USER_PROMPT(lyricsText) },
+        { role: "user", content: ANALYSIS_USER_PROMPT(lyricsText, isChinese) },
       ],
     }),
     signal,
@@ -232,27 +246,142 @@ function safeJsonParse(raw: string): Record<string, unknown> {
 function parseAnalysisResponse(raw: string | undefined): AnalysisResult {
   if (!raw) throw new Error("Empty response from AI");
 
+  logger.info("ai-service", "Raw AI response (first 300 chars):", raw.slice(0, 300));
+
   const json = safeJsonParse(raw);
-  const emotionsRaw = Array.isArray(json.emotions) ? json.emotions : [];
-  const themeRaw = Array.isArray(json.theme) ? json.theme : Array.isArray(json.themes) ? json.themes : ["personal"];
+
+  // Emotions — support multiple field formats
+  const emotionsRaw = Array.isArray(json.emotions) ? json.emotions
+    : Array.isArray(json.emotion) ? json.emotion
+    : [];
+
+  // Themes — support both "theme" and "themes"
+  const themeRaw = Array.isArray(json.theme) ? json.theme
+    : Array.isArray(json.themes) ? json.themes
+    : [];
+
+  // Palette
   const paletteRaw = Array.isArray(json.suggestedPalette) ? json.suggestedPalette
     : Array.isArray(json.color_palette) ? json.color_palette
+    : Array.isArray(json.colors) ? json.colors
     : ["#FFFFFF", "#E0E0E0", "#FF6B6B"];
 
+  // Normalize emotions — AI may return plain strings instead of objects
+  const emotions: { label: string; intensity: number }[] = emotionsRaw.map((e: unknown) => {
+    if (typeof e === "string") {
+      return { label: normalizeLabel(e), intensity: 0.7 };
+    }
+    const item = e as Record<string, unknown>;
+    return {
+      label: normalizeLabel(String(item.label || item.emotion || item.name || "calmness")),
+      intensity: typeof item.intensity === "number" ? item.intensity
+        : typeof item.score === "number" ? item.score
+        : 0.5,
+    };
+  });
+
+  // Normalize themes
+  const themes = themeRaw.map((t: unknown) => {
+    if (typeof t === "string") return normalizeLabel(t);
+    const item = t as Record<string, unknown>;
+    return normalizeLabel(String(item.label || item.name || item.tag || t));
+  });
+
+  // Detect if the AI response is predominantly Chinese (for language normalization)
+  const responseText = JSON.stringify(json);
+  const chineseInResponse = (responseText.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
+  const isResponseChinese = chineseInResponse > responseText.length * 0.15;
+
+  // Normalize theme labels to match the response language
+  const normalizedThemes = normalizeLabelsToLanguage(themes, isResponseChinese ? "zh" : "en");
+
+  // Also normalize emotion labels
+  const normalizedEmotions = emotions.map(e => ({
+    ...e,
+    label: normalizeLabelToLanguage(e.label, isResponseChinese ? "zh" : "en"),
+  }));
+
+  // Style prompt — support multiple field names
+  const stylePrompt = String(
+    json.stylePrompt || json.style_prompt || json.styleDescription
+    || json.style_description || json.description || ""
+  );
+
+  logger.info("ai-service", "Parsed analysis:", {
+    emotionCount: normalizedEmotions.length,
+    themeCount: normalizedThemes.length,
+    hasStylePrompt: !!stylePrompt,
+    isResponseChinese,
+    emotions: normalizedEmotions.map(e => e.label),
+    themes: normalizedThemes,
+  });
+
   return {
-    emotions: emotionsRaw.map((e: unknown) => {
-      const item = e as Record<string, unknown>;
-      return {
-        label: String(item.label || item.emotion || "calmness"),
-        intensity: typeof item.intensity === "number" ? item.intensity : 0.5,
-      };
-    }),
-    theme: themeRaw.map(String),
+    emotions: normalizedEmotions.length > 0 ? normalizedEmotions : [
+      { label: isResponseChinese ? "平静" : "calmness", intensity: 0.5 },
+    ],
+    theme: normalizedThemes.length > 0 ? normalizedThemes : [isResponseChinese ? "个人" : "personal"],
     tempo: (String(json.tempo || json.tempo_feel || "medium")) as "slow" | "medium" | "fast",
     suggestedPalette: paletteRaw.map(String),
     suggestedFontStyle: String(json.suggestedFontStyle || json.font_style || "sans-serif"),
-    stylePrompt: String(json.stylePrompt || json.style_prompt || "Clean modern typography."),
+    stylePrompt: stylePrompt || (isResponseChinese
+      ? "现代简约无衬线字体，白色主字配淡蓝辅色，居中淡入动画，柔和文字阴影。"
+      : "Clean modern typography with smooth animations."),
   };
+}
+
+/** Normalize AI output labels to lowercase English for dictionary lookup.
+ *  If the AI returns a Chinese label (e.g. "爱"), keep it as-is so it can be displayed directly
+ *  or matched against the Chinese dictionary keys. */
+function normalizeLabel(label: string): string {
+  const trimmed = label.trim();
+  // If it's already lowercase ASCII, return as-is
+  if (/^[a-z0-9\s&_-]+$/.test(trimmed)) return trimmed;
+  // If mixed/other (Chinese, uppercase, etc.), return as-is
+  return trimmed;
+}
+
+/** English→Chinese lookup table for common emotion/theme labels.
+ *  Used to normalize mixed-language AI outputs into a consistent language. */
+const EN_TO_ZH: Record<string, string> = {
+  // Emotions
+  passion: "热情", nostalgia: "怀旧", sweetness: "甜蜜", sadness: "悲伤",
+  anger: "愤怒", joy: "喜悦", melancholy: "忧郁", romance: "浪漫",
+  loneliness: "孤独", calmness: "平静", energy: "活力", triumph: "胜利",
+  excitement: "兴奋", hope: "希望", longing: "渴望", love: "爱",
+  happiness: "幸福", pride: "骄傲", regret: "遗憾", warmth: "温暖",
+  playfulness: "俏皮", rebellion: "叛逆",
+  // Themes
+  "dance & movement": "舞蹈与律动", "electric energy": "电流能量",
+  "storm to sunshine": "风雨见晴", empowerment: "自我赋权",
+  "summer romance": "夏日恋情", heartbreak: "心碎", "road trip": "公路旅行",
+  "self-discovery": "自我发现", friendship: "友情", "coming of age": "成长",
+  reflective: "沉思", personal: "个人", dream: "梦想", youth: "青春",
+  freedom: "自由", adventure: "冒险", party: "派对", nature: "自然",
+  city: "城市", summer: "夏日", winter: "冬季", healing: "治愈", growth: "成长",
+};
+
+/** Reverse lookup: Chinese→English */
+const ZH_TO_EN: Record<string, string> = Object.fromEntries(
+  Object.entries(EN_TO_ZH).map(([en, zh]) => [zh, en])
+);
+
+function normalizeLabelToLanguage(label: string, targetLang: "zh" | "en"): string {
+  if (targetLang === "zh") {
+    // If already Chinese, return as-is
+    if (/[\u4e00-\u9fff]/.test(label)) return label;
+    // Translate English→Chinese
+    return EN_TO_ZH[label.toLowerCase()] || label;
+  } else {
+    // If already ASCII, return as-is
+    if (!/[\u4e00-\u9fff]/.test(label)) return label;
+    // Translate Chinese→English
+    return ZH_TO_EN[label] || label;
+  }
+}
+
+function normalizeLabelsToLanguage(labels: string[], targetLang: "zh" | "en"): string[] {
+  return labels.map(l => normalizeLabelToLanguage(l, targetLang));
 }
 
 // ============================================================

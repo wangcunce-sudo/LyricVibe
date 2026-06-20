@@ -278,7 +278,7 @@ function StyleTab({
                   key={tStr}
                   className="px-2.5 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-medium"
                 >
-                  {tStr}
+                  {tEmotion(tStr, locale)}
                 </span>
               ))}
             </div>

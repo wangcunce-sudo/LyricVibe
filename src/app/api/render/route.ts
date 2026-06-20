@@ -150,6 +150,59 @@ export async function POST(request: NextRequest) {
     }
 
     // ============================================================
+    // 应用 speed / pitch 效果到音频（ffmpeg 预处理）
+    // ============================================================
+    if ((speed && speed !== 1) || (pitch && pitch !== 0)) {
+      if (processedAudioPath && fs.existsSync(processedAudioPath)) {
+        const fxDir = path.join(process.cwd(), "out", "audio_fx");
+        if (!fs.existsSync(fxDir)) fs.mkdirSync(fxDir, { recursive: true });
+        const fxPath = path.join(fxDir, `fx_${Date.now()}.mp3`);
+
+        try {
+          const { execSync } = await import("child_process");
+
+          if (speed && speed !== 1) {
+            // ffmpeg atempo: 0.5-2.0 range per filter. Chain multiple for extremes.
+            // atempo works by changing tempo without affecting pitch.
+            // For pitch shift, use asetrate + atempo combination.
+            const tempoFilter = buildAtempoFilter(speed);
+            const pitchFilter = pitch && pitch !== 0
+              ? buildPitchFilter(pitch)
+              : "";
+
+            const filterChain = [tempoFilter, pitchFilter].filter(Boolean).join(",");
+
+            logger.info("render", `应用音频效果: speed=${speed}x, pitch=${pitch}semitones, filter="${filterChain}"`);
+            execSync(
+              `ffmpeg -y -i "${processedAudioPath}" -af "${filterChain}" -codec:a libmp3lame -qscale:a 2 "${fxPath}" 2>/dev/null`
+            );
+
+            if (fs.existsSync(fxPath)) {
+              processedAudioPath = fxPath;
+              processedAudioName = path.basename(fxPath);
+              logger.info("render", `音频效果处理完成: ${processedAudioName}`);
+            }
+          } else if (pitch && pitch !== 0) {
+            // Only pitch shift, no speed change
+            const pitchFilter = buildPitchFilter(pitch);
+            logger.info("render", `应用音调偏移: pitch=${pitch}semitones`);
+            execSync(
+              `ffmpeg -y -i "${processedAudioPath}" -af "${pitchFilter}" -codec:a libmp3lame -qscale:a 2 "${fxPath}" 2>/dev/null`
+            );
+
+            if (fs.existsSync(fxPath)) {
+              processedAudioPath = fxPath;
+              processedAudioName = path.basename(fxPath);
+              logger.info("render", `音调处理完成: ${processedAudioName}`);
+            }
+          }
+        } catch (e) {
+          logger.warn("render", "音频效果处理失败，使用原始音频:", e);
+        }
+      }
+    }
+
+    // ============================================================
     // 模式 1: Docker Render Server
     // ============================================================
     if (RENDER_SERVER_URL) {
@@ -446,3 +499,47 @@ async function pollRenderProgress(
 }
 
 export const maxDuration = 600;
+
+// ============================================================
+// ffmpeg 音频效果辅助函数
+// ============================================================
+
+/**
+ * 构建 ffmpeg atempo 滤镜链。
+ * ffmpeg atempo 单次范围 [0.5, 2.0]，超出需串联多个。
+ */
+function buildAtempoFilter(speed: number): string {
+  // Clamp to reasonable range
+  const s = Math.max(0.25, Math.min(4, speed));
+
+  if (s >= 0.5 && s <= 2.0) {
+    return `atempo=${s.toFixed(2)}`;
+  }
+
+  // Chain multiple atempo filters
+  const parts: string[] = [];
+  let remaining = s;
+  while (remaining > 2.0) {
+    parts.push("atempo=2.0");
+    remaining /= 2.0;
+  }
+  while (remaining < 0.5) {
+    parts.push("atempo=0.5");
+    remaining /= 0.5;
+  }
+  parts.push(`atempo=${remaining.toFixed(2)}`);
+  return parts.join(",");
+}
+
+/**
+ * 构建 ffmpeg 变调滤镜。
+ * pitch 单位为半音 (semitones)，正值升调，负值降调。
+ * 使用 rubberband 库（如果可用）或 asetrate + atempo 组合。
+ */
+function buildPitchFilter(pitchSemitones: number): string {
+  // asetrate 改变采样率来变调，atempo 补偿速度变化
+  // pitch_ratio = 2^(semitones/12)
+  const ratio = Math.pow(2, pitchSemitones / 12);
+  // asetrate 乘以 ratio 会变调但也会变速度，需要 atempo 补偿
+  return `asetrate=44100*${ratio.toFixed(4)},atempo=${(1 / ratio).toFixed(4)}`;
+}

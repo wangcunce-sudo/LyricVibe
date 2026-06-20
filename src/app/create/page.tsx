@@ -207,6 +207,10 @@ export default function CreatePage() {
           setAnalysis(data.analysis);
           setStylePrompt(data.stylePrompt);
           setStyleParams(data.styleParams);
+          // 自动将 AI 生成的风格提示词填入字幕模板输入框
+          if (data.stylePrompt) {
+            setTemplateDescription(data.stylePrompt);
+          }
         } else {
           const fallback = await fetch("/api/analyze", {
             method: "POST",
@@ -218,6 +222,9 @@ export default function CreatePage() {
             setAnalysis(data.analysis);
             setStylePrompt(data.stylePrompt);
             setStyleParams(data.styleParams);
+            if (data.stylePrompt) {
+              setTemplateDescription(data.stylePrompt);
+            }
           }
         }
       }
@@ -236,48 +243,103 @@ export default function CreatePage() {
       setShowSpeechRecorder(false);
       setShowIntro(false);
 
-      setIsAnalyzing(true);
-      fetch("/api/analyze", {
+      // 先验证歌词，再用验证后的歌词进行分析
+      fetch("/api/verify-lyrics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lyrics: extractedLyrics,
-          audioUrl: effectiveAudioUrl || undefined,
-        }),
+        body: JSON.stringify({ lyrics: extractedLyrics }),
       })
         .then((res) => res.json())
         .then((data) => {
-          setAnalysis(data.analysis);
-          setStylePrompt(data.stylePrompt);
-          setStyleParams(data.styleParams);
-          setIsAnalyzing(false);
+          const finalLyrics = data.verified ? data.lyrics : extractedLyrics;
+          if (data.corrections?.length > 0) {
+            logger.info("CreatePage", `歌词验证: ${data.corrections.length} 处修正`);
+            setLyrics(finalLyrics);
+          }
+          // 用验证后的歌词进行分析
+          return finalLyrics;
         })
-        .catch((error) => {
-          logger.error("CreatePage", "Speech lyrics analysis failed:", error);
-          setIsAnalyzing(false);
+        .catch((err) => {
+          logger.warn("CreatePage", "歌词验证失败，使用原始歌词:", err);
+          return extractedLyrics;
+        })
+        .then((finalLyrics) => {
+          setIsAnalyzing(true);
+          return fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              lyrics: finalLyrics,
+              audioUrl: effectiveAudioUrl || undefined,
+            }),
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              setAnalysis(data.analysis);
+              setStylePrompt(data.stylePrompt);
+              setStyleParams(data.styleParams);
+              if (data.stylePrompt) {
+                setTemplateDescription(data.stylePrompt);
+              }
+              setIsAnalyzing(false);
+            })
+            .catch((error) => {
+              logger.error("CreatePage", "Speech lyrics analysis failed:", error);
+              setIsAnalyzing(false);
+            });
         });
     },
-    [audioFile]
+    [audioFile, effectiveAudioUrl]
   );
 
   const handleStylePromptApply = useCallback(async () => {
-    if (!stylePrompt || !analysis) return;
+    if (!stylePrompt) return;
+
+    // 将 AI 生成的风格提示词放入字幕模板输入框，并自动触发生成
+    setTemplateDescription(stylePrompt);
+
+    // 延迟触发以确保 state 更新
+    setTimeout(() => {
+      handleTemplateGenerateWithPrompt(stylePrompt);
+    }, 100);
+  }, [stylePrompt]);
+
+  // 带参数版本的模板生成，避免闭包中 templateDescription 还未更新
+  const handleTemplateGenerateWithPrompt = useCallback(async (prompt: string) => {
+    if (!prompt.trim()) return;
 
     try {
-      const response = await fetch("/api/analyze", {
+      const response = await fetch("/api/template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lyrics, stylePrompt }),
+        body: JSON.stringify({
+          description: prompt,
+          currentStyle: styleParams,
+        }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        setStyleParams(data.styleParams);
+        if (data.template) {
+          setSubtitleTemplate(data.template);
+          setStyleParams(prev => ({
+            ...prev,
+            fontFamily: data.template.render.fontFamily,
+            fontSize: data.template.render.fontSize,
+            primaryColor: data.template.render.primaryColor,
+            secondaryColor: data.template.render.secondaryColor,
+            accentColor: data.template.render.accentColor,
+            animation: data.template.animation.entrance,
+            fontWeight: data.template.render.fontWeight,
+            textShadow: data.template.render.textShadow,
+          }));
+          logger.info("Template", "Generated from style prompt:", data.template.name);
+        }
       }
     } catch (error) {
-      logger.error("CreatePage", "Style prompt apply failed:", error);
+      logger.error("Template", "Error from style prompt:", error);
     }
-  }, [stylePrompt, analysis, lyrics]);
+  }, [styleParams]);
 
   const applyAlternativeStyle = useCallback((key: string) => {
     const style = ALTERNATIVE_STYLES[key];
