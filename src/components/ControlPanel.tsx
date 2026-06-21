@@ -18,6 +18,7 @@ import type {
   FilterType,
   AnimationType,
   LyricLine,
+  FileInfo,
 } from "@/lib/types";
 import {
   FILTER_LABELS,
@@ -27,6 +28,8 @@ import {
 } from "@/lib/types";
 import { PRESET_TEMPLATES, PRESET_STYLES, OPHELIA_TEMPLATE, OPHELIA_STYLE } from "@/lib/demo-data";
 import type { SubtitleTemplate } from "@/lib/types";
+import type { SceneAnimSpec } from "@/lib/animation-types";
+import { SCENE_PRESETS } from "@/lib/animation-types";
 
 interface ControlPanelProps {
   analysis: AnalysisResult | null;
@@ -54,9 +57,19 @@ interface ControlPanelProps {
   onSubtitleTemplateChange?: (template: SubtitleTemplate) => void;
   /** AI 识别到的歌曲名 */
   songTitle?: string | null;
+  /** 动画底片场景相关 */
+  backgroundScene?: import("@/lib/animation-types").SceneAnimSpec | null;
+  backgroundSceneDescription?: string;
+  onBackgroundSceneDescriptionChange?: (desc: string) => void;
+  onBackgroundSceneGenerate?: () => void;
+  onBackgroundSceneChange?: (scene: import("@/lib/animation-types").SceneAnimSpec | null) => void;
+  isGeneratingScene?: boolean;
+  /** 图片背景相关 */
+  backgroundImageFile?: FileInfo | null;
+  onBackgroundImageFileChange?: (file: FileInfo | null) => void;
 }
 
-type Tab = "style" | "filter" | "audio" | "advanced";
+type Tab = "style" | "filter" | "audio" | "advanced" | "scene";
 
 export function ControlPanel({
   analysis,
@@ -82,6 +95,14 @@ export function ControlPanel({
   onTemplateGenerate,
   onSubtitleTemplateChange,
   songTitle,
+  backgroundScene,
+  backgroundSceneDescription = "",
+  onBackgroundSceneDescriptionChange,
+  onBackgroundSceneGenerate,
+  onBackgroundSceneChange,
+  isGeneratingScene = false,
+  backgroundImageFile,
+  onBackgroundImageFileChange,
 }: ControlPanelProps) {
   const { locale, t } = useI18n();
   const cpDict = t("controlPanel");
@@ -94,6 +115,7 @@ export function ControlPanel({
     { id: "filter", label: cpDict.tabs.filter, icon: <Palette className="w-4 h-4" /> },
     { id: "audio", label: cpDict.tabs.audio, icon: <Music className="w-4 h-4" /> },
     { id: "advanced", label: cpDict.tabs.advanced, icon: <Sliders className="w-4 h-4" /> },
+    { id: "scene", label: "背景", icon: <Palette className="w-4 h-4" /> },
   ];
 
   return (
@@ -162,6 +184,19 @@ export function ControlPanel({
           <AdvancedTab
             styleParams={styleParams}
             onStyleParamsChange={onStyleParamsChange}
+          />
+        )}
+
+        {activeTab === "scene" && (
+          <SceneTab
+            backgroundScene={backgroundScene}
+            description={backgroundSceneDescription}
+            onDescriptionChange={onBackgroundSceneDescriptionChange}
+            onGenerate={onBackgroundSceneGenerate}
+            onSceneChange={onBackgroundSceneChange}
+            isGenerating={isGeneratingScene}
+            backgroundImageFile={backgroundImageFile}
+            onBackgroundImageFileChange={onBackgroundImageFileChange}
           />
         )}
       </div>
@@ -800,3 +835,230 @@ const AdvancedTab = memo(function AdvancedTab({
     </div>
   );
 });
+
+// ============================================================
+// Scene Tab — AI 动画循环底片
+// ============================================================
+
+const SCENE_TAB_ITEMS = Object.entries(SCENE_PRESETS).map(([key, scene]) => ({
+  key,
+  name: scene.name,
+  description: scene.description,
+  scene,
+}));
+
+function SceneTab({
+  backgroundScene,
+  description,
+  onDescriptionChange,
+  onGenerate,
+  onSceneChange,
+  isGenerating,
+  backgroundImageFile,
+  onBackgroundImageFileChange,
+}: {
+  backgroundScene?: SceneAnimSpec | null;
+  description: string;
+  onDescriptionChange?: (desc: string) => void;
+  onGenerate?: () => void;
+  onSceneChange?: (scene: SceneAnimSpec | null) => void;
+  isGenerating: boolean;
+  backgroundImageFile?: FileInfo | null;
+  onBackgroundImageFileChange?: (file: FileInfo | null) => void;
+}) {
+  const currentSceneKey = backgroundScene
+    ? Object.entries(SCENE_PRESETS).find(([, s]) => s.name === backgroundScene.name)?.[0]
+    : null;
+
+  return (
+    <div className="space-y-4">
+      {/* 标题 */}
+      <div className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+        <Sparkles className="w-4 h-4 text-purple-500" />
+        AI 动画循环底片
+      </div>
+
+      <p className="text-xs text-gray-500">
+        用自然语言描述你想要的背景动画效果，AI 会将其生成为循环播放的粒子动画底片。留空则使用上传的视频作为背景。
+      </p>
+
+      {/* 自然语言输入 */}
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-gray-500">描述想要的背景</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => onDescriptionChange?.(e.target.value)}
+            placeholder="例如：粉色泡泡在海底飘的梦幻背景"
+            className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-400"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !isGenerating) onGenerate?.();
+            }}
+          />
+          <button
+            onClick={onGenerate}
+            disabled={!description.trim() || isGenerating}
+            className="px-3 py-2 bg-purple-500 text-white rounded-lg text-sm font-medium hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5 shrink-0"
+          >
+            {isGenerating ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5" />
+            )}
+            生成
+          </button>
+        </div>
+      </div>
+
+      {/* 当前场景 */}
+      {backgroundScene && (
+        <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-sm font-semibold text-purple-700">{backgroundScene.name}</span>
+              <p className="text-xs text-purple-500 mt-0.5">{backgroundScene.description}</p>
+            </div>
+            <button
+              onClick={() => onSceneChange?.(null)}
+              className="text-xs text-purple-400 hover:text-purple-600 transition-colors"
+            >
+              ✕ 清除
+            </button>
+          </div>
+          {backgroundScene.particles && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded">
+                {backgroundScene.particles.count} 粒子
+              </span>
+              <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded">
+                {backgroundScene.particles.motion}
+              </span>
+              <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded">
+                {backgroundScene.particles.shape}
+              </span>
+              {backgroundScene.particles.glow && (
+                <span className="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded">发光</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 预设场景快捷选择 */}
+      <div>
+        <label className="text-xs font-medium text-gray-500 mb-2 block">
+          或选择预设场景
+        </label>
+        <div className="grid grid-cols-2 gap-1.5 max-h-[240px] overflow-y-auto">
+          {SCENE_TAB_ITEMS.map(({ key, name, description: desc, scene }) => {
+            const isActive = key === currentSceneKey;
+            return (
+              <button
+                key={key}
+                onClick={() => onSceneChange?.(scene)}
+                className={cn(
+                  "text-left p-2 rounded-lg border transition-all",
+                  isActive
+                    ? "border-purple-400 bg-purple-50 ring-1 ring-purple-300"
+                    : "border-gray-100 bg-gray-50 hover:border-gray-200 hover:bg-gray-100"
+                )}
+              >
+                <div className="text-xs font-semibold text-gray-700">{name}</div>
+                <div className="text-[10px] text-gray-400 line-clamp-1 mt-0.5">{desc}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 分隔线 */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-px bg-gray-200" />
+        <span className="text-[10px] text-gray-400">或</span>
+        <div className="flex-1 h-px bg-gray-200" />
+      </div>
+
+      {/* 图片背景上传 */}
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21,15 16,10 5,21"/>
+          </svg>
+          图片背景（Ken Burns + 飘动动效）
+        </label>
+        <p className="text-[10px] text-gray-400">
+          上传静态图片，Remotion 会自动添加缩放、飘动、光效等电影级动效
+        </p>
+
+        {!backgroundImageFile ? (
+          <label className="relative border-2 border-dashed rounded-lg p-4 text-center transition-all cursor-pointer block border-amber-300/60 hover:border-amber-400 hover:bg-amber-50/50">
+            <svg className="w-6 h-6 mx-auto text-amber-400 mb-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21,15 16,10 5,21"/>
+            </svg>
+            <p className="text-gray-500 text-xs font-medium">拖入图片或点击上传</p>
+            <p className="text-gray-400 text-[10px]">PNG, JPG, WebP</p>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const formData = new FormData();
+                formData.append("image", file);
+                try {
+                  const res = await fetch("/api/upload", { method: "POST", body: formData });
+                  let url = URL.createObjectURL(file);
+                  if (res.ok) {
+                    const d = await res.json();
+                    url = d.image?.url || d.url || url;
+                  }
+                  onBackgroundImageFileChange?.({
+                    id: `bg-img-${Date.now()}`,
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    url,
+                  });
+                } catch {
+                  onBackgroundImageFileChange?.({
+                    id: `bg-img-${Date.now()}`,
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    url: URL.createObjectURL(file),
+                  });
+                }
+              }}
+            />
+          </label>
+        ) : (
+          <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <svg className="w-4 h-4 text-amber-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21,15 16,10 5,21"/>
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-gray-700 truncate">{backgroundImageFile.name}</p>
+              <p className="text-[10px] text-amber-600">Ken Burns 缩放 + 飘动动效</p>
+            </div>
+            <button
+              onClick={() => onBackgroundImageFileChange?.(null)}
+              className="text-gray-400 hover:text-red-500 transition-colors shrink-0"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

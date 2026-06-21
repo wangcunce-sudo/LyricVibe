@@ -945,3 +945,209 @@ function getDefaultTemplate(
     },
   };
 }
+
+// ============================================================
+// 动画底片场景生成 — 用户自然语言 → SceneAnimSpec
+// ============================================================
+
+import type { SceneAnimSpec } from "./animation-types";
+import { SCENE_PRESETS, matchSceneByKeywords } from "./animation-types";
+
+const SCENE_SYSTEM_PROMPT = `You are a visual effects designer for music videos. Convert the user's natural language description of a desired animated background into a precise JSON specification for a particle-based animation loop.
+
+The animation runs on a 1920×1080 canvas as a seamless looping background (like a music visualizer backdrop).
+
+Output ONLY valid JSON with this exact structure:
+{
+  "name": "short scene name",
+  "description": "one-line summary",
+  "background": {
+    "type": "linear|radial|conic",
+    "angle": 180,
+    "centerX": 0.5,
+    "centerY": 0.5,
+    "stops": [
+      { "color": "#HEX", "position": 0 },
+      { "color": "#HEX", "position": 1 }
+    ],
+    "animationSpeed": 0.2
+  },
+  "particles": {
+    "count": 60,
+    "shape": "circle|star|heart|diamond|cross|ring|sparkle",
+    "minSize": 2,
+    "maxSize": 20,
+    "colors": ["#HEX"],
+    "minOpacity": 0.1,
+    "maxOpacity": 0.8,
+    "motion": "float-up|float-random|fall-down|pulse|orbit|spiral|zigzag",
+    "speed": 0.3,
+    "twinkle": 0.3,
+    "lifespan": 180,
+    "glow": false,
+    "glowColor": "#HEX",
+    "glowIntensity": 0.3
+  },
+  "pattern": {
+    "type": "none|stars|grid|dots|waves|hexagon|noise|stripes",
+    "color": "rgba(r,g,b,a)",
+    "opacity": 0.3,
+    "scale": 1,
+    "animationSpeed": 0
+  },
+  "loopFrames": 180,
+  "colorOverlay": "optional CSS filter string"
+}
+
+Interpretation guidelines:
+- 海底/海洋/水: deep blue gradient (angle=180), circle particles floating up, blue/teal/white colors, bubbles
+- 星空/宇宙/银河: dark purple/black radial gradient, sparkle/star particles orbiting, gold/white colors, high twinkle
+- 樱花/花瓣/春天: pink/peach gradient, heart-shaped particles zigzag falling, pink/white colors
+- 霓虹/赛博/科技: dark gradient, diamond particles pulsing, neon colors (cyan/magenta/yellow), glow=true, grid pattern
+- 日落/夕阳/黄昏: warm orange-to-purple gradient, ring particles floating up, gold/orange colors
+- 雨/下雨: dark blue-gray gradient, cross/line particles falling down fast, light blue/white colors
+- 派对/迪斯科/disco: conic gradient with fast animation, star particles spiral, bright multicolor, high twinkle
+- 极光/aurora: dark teal gradient, sparkle particles random float, green/white colors, wave pattern, high glow
+- 梦幻/童话/fairy: soft pastel gradient, heart+sparkle mix, slow float, pink/purple/gold colors
+- 火焰/燃烧/fire: warm red-orange gradient, diamond particles float-up, red/orange/yellow colors, glow=true
+- 冰雪/冬天/winter: cool blue-white gradient, circle/cross particles fall-down, white/light-blue colors
+- 森林/自然/forest: green gradient, circle/leaf shapes float-random, green/brown colors`;
+
+/**
+ * 通过自然语言生成动画底片场景
+ */
+export async function generateAnimationScene(
+  description: string
+): Promise<SceneAnimSpec> {
+  const provider = detectProvider();
+
+  if (!provider) {
+    logger.info("ai-service", "[Scene] No AI API key, using keyword-based fallback");
+    return getSceneByKeywords(description);
+  }
+
+  try {
+    const signal = AbortSignal.timeout(AI_TEMPLATE_TIMEOUT_MS);
+
+    const userPrompt = `User wants an animated background that: "${description}"
+
+Generate the scene animation JSON that best matches this description. Choose appropriate colors, particles, and motion patterns.`;
+
+    let raw: string;
+
+    if (provider === "anthropic") {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY!,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307",
+          max_tokens: 800,
+          system: SCENE_SYSTEM_PROMPT,
+          messages: [{ role: "user", content: userPrompt }],
+        }),
+        signal,
+      });
+      const data = await response.json();
+      raw = data.content[0]?.text || "";
+    } else {
+      const config = getProviderConfig(provider);
+      const body: Record<string, unknown> = {
+        model: config.model,
+        messages: [
+          { role: "system", content: SCENE_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 800,
+      };
+      if (config.supportsJsonMode) {
+        body.response_format = { type: "json_object" };
+      }
+
+      const response = await fetch(config.apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
+      const data = await response.json();
+      raw = data.choices?.[0]?.message?.content || "";
+    }
+
+    const json = safeJsonParse(raw);
+    return parseSceneSpec(json, description);
+  } catch (error) {
+    logger.error("ai-service", "[Scene] Generation failed, using fallback:", error);
+    return getSceneByKeywords(description);
+  }
+}
+
+/**
+ * 基于关键词匹配预设场景（AI 不可用时的 fallback）
+ */
+function getSceneByKeywords(description: string): SceneAnimSpec {
+  const sceneKey = matchSceneByKeywords(description);
+  return SCENE_PRESETS[sceneKey] || SCENE_PRESETS["ocean-bubbles"];
+}
+
+/**
+ * 解析 AI 返回的 JSON → SceneAnimSpec
+ */
+function parseSceneSpec(json: Record<string, unknown>, description: string): SceneAnimSpec {
+  const bg = (json.background || {}) as Record<string, unknown>;
+  const pts = (json.particles || {}) as Record<string, unknown>;
+  const pat = (json.pattern || {}) as Record<string, unknown>;
+
+  const stopsRaw = Array.isArray(bg.stops) ? bg.stops : [{ color: "#0a1628", position: 0 }, { color: "#0f3460", position: 1 }];
+
+  return {
+    name: String(json.name || "AI Generated"),
+    description: String(json.description || description.slice(0, 100)),
+    background: {
+      type: (String(bg.type || "linear")) as "linear" | "radial" | "conic",
+      angle: typeof bg.angle === "number" ? bg.angle : undefined,
+      centerX: typeof bg.centerX === "number" ? bg.centerX : undefined,
+      centerY: typeof bg.centerY === "number" ? bg.centerY : undefined,
+      stops: stopsRaw.map((s: unknown) => {
+        const stop = s as Record<string, unknown>;
+        return {
+          color: String(stop.color || "#000000"),
+          position: Number(stop.position ?? 0),
+        };
+      }),
+      animationSpeed: typeof bg.animationSpeed === "number" ? bg.animationSpeed : 0,
+    },
+    particles: pts && Object.keys(pts).length > 0 ? {
+      count: Math.min(300, Number(pts.count ?? 60)),
+      shape: String(pts.shape || "circle") as NonNullable<SceneAnimSpec["particles"]>["shape"],
+      minSize: Number(pts.minSize ?? 4),
+      maxSize: Number(pts.maxSize ?? 20),
+      colors: Array.isArray(pts.colors) ? pts.colors.map(String) : ["#FFFFFF", "#87CEEB"],
+      minOpacity: Number(pts.minOpacity ?? 0.1),
+      maxOpacity: Number(pts.maxOpacity ?? 0.6),
+      motion: String(pts.motion || "float-up") as NonNullable<SceneAnimSpec["particles"]>["motion"],
+      speed: Number(pts.speed ?? 0.3),
+      twinkle: Number(pts.twinkle ?? 0.3),
+      lifespan: Number(pts.lifespan ?? 180),
+      glow: Boolean(pts.glow ?? false),
+      glowColor: pts.glowColor ? String(pts.glowColor) : undefined,
+      glowIntensity: typeof pts.glowIntensity === "number" ? pts.glowIntensity : undefined,
+    } : undefined,
+    pattern: pat && String(pat.type || "none") !== "none" ? {
+      type: String(pat.type || "none") as NonNullable<SceneAnimSpec["pattern"]>["type"],
+      color: String(pat.color || "rgba(255,255,255,0.05)"),
+      opacity: Number(pat.opacity ?? 0.3),
+      scale: Number(pat.scale ?? 1),
+      animationSpeed: typeof pat.animationSpeed === "number" ? pat.animationSpeed : 0,
+    } : undefined,
+    loopFrames: Number(json.loopFrames || 180),
+    colorOverlay: json.colorOverlay ? String(json.colorOverlay) : undefined,
+  };
+}

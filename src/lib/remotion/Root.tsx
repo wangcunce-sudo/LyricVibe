@@ -88,7 +88,7 @@ export const RemotionRoot: React.FC = () => {
         }}
       />
 
-      {/* LyricVibe 全流程展示 Demo Video — 50秒完整工作流 */}
+      {/* 音动字生 全流程展示 Demo Video — 50秒完整工作流 */}
       <Composition
         id="LyricVibeDemo"
         component={DemoVideoComposition}

@@ -21,6 +21,7 @@ import crypto from "crypto";
 import { logger } from "@/lib/logger";
 import { RenderRequestSchema } from "@/lib/validation";
 import { mergeTemplateWithStyle } from "@/lib/types";
+import type { SceneAnimSpec } from "@/lib/animation-types";
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -86,7 +87,9 @@ export async function POST(request: NextRequest) {
       filter,
       speed,
       pitch,
-    } = parsed.data;
+      backgroundScene,
+      backgroundImage,
+    } = parsed.data as any;
 
     const videoAsset = resolveAsset(videoUrl);
     // 音频来源：独立音频文件 > 视频文件（从视频中提取音轨）
@@ -237,6 +240,8 @@ export async function POST(request: NextRequest) {
             speed: speed || 1,
             pitch: pitch || 0,
             subtitleTemplate: mergedTemplate || undefined,
+            backgroundScene: backgroundScene || undefined,
+            backgroundImage: backgroundImage || undefined,
           },
           composition: "LyricVibeVideo",
           codec: "h264",
@@ -326,6 +331,28 @@ export async function POST(request: NextRequest) {
       logger.info(`render:${renderId}`, `复制音频: ${audioName} → bundle/public/`);
     }
 
+    // 复制背景图片（如果有）
+    let resolvedImageAsset: string | null = null;
+    if (backgroundImage) {
+      const imageAsset = resolveAsset(backgroundImage);
+      if (imageAsset?.filePath && fs.existsSync(imageAsset.filePath)) {
+        const dest = path.join(bundlePublicDir, imageAsset.assetName);
+        await fsPromises.copyFile(imageAsset.filePath, dest);
+        resolvedImageAsset = imageAsset.assetName;
+        logger.info(`render:${renderId}`, `复制背景图片: ${imageAsset.assetName} → bundle/public/`);
+      } else {
+        // 尝试作为 public 目录下的文件直接使用
+        const publicImgPath = path.join(process.cwd(), "public", backgroundImage.replace(/^\//, ""));
+        if (fs.existsSync(publicImgPath)) {
+          const imgName = path.basename(backgroundImage);
+          const dest = path.join(bundlePublicDir, imgName);
+          await fsPromises.copyFile(publicImgPath, dest);
+          resolvedImageAsset = imgName;
+          logger.info(`render:${renderId}`, `复制背景图片: ${imgName} → bundle/public/`);
+        }
+      }
+    }
+
     // Step 3: 选择 Composition
     // 传入纯文件名，Composition 内部用 staticFile() 解析
     const inputProps = {
@@ -342,6 +369,8 @@ export async function POST(request: NextRequest) {
       speed: speed || 1,
       pitch: pitch || 0,
       subtitleTemplate: body.subtitleTemplate || undefined,
+      backgroundScene: backgroundScene || undefined,
+      backgroundImage: resolvedImageAsset || backgroundImage || undefined,
     };
 
     logger.info(`render:${renderId}`, "========== INPUT PROPS DEBUG ==========");

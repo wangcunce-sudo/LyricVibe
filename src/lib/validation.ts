@@ -74,6 +74,7 @@ export const RenderRequestSchema = z.object({
   speed: z.number().min(0.5).max(2).optional(),
   pitch: z.number().int().min(-12).max(12).optional(),
   subtitleTemplate: z.unknown().optional(),
+  backgroundScene: z.unknown().optional(),
 });
 
 /** POST /api/verify-lyrics */

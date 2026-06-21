@@ -9,33 +9,65 @@ function SeagullSvg({ className, size = 24 }: { className?: string; size?: numbe
   return (
     <svg
       width={size}
-      height={size}
-      viewBox="0 0 40 20"
+      height={size * 0.55}
+      viewBox="0 0 60 33"
       fill="none"
       className={className}
       aria-hidden="true"
     >
+      {/* Left wing */}
       <path
-        d="M0 18 Q10 0 20 10 Q30 0 40 18"
+        d="M0 28 Q10 2 30 18"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="2.5"
         fill="none"
         strokeLinecap="round"
       />
+      {/* Right wing */}
       <path
-        d="M6 16 Q14 6 20 12"
+        d="M60 28 Q50 2 30 18"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        fill="none"
+        strokeLinecap="round"
+      />
+      {/* Body */}
+      <ellipse cx="30" cy="18" rx="6" ry="3" fill="currentColor" opacity="0.5" />
+      {/* Inner wing detail left */}
+      <path
+        d="M4 26 Q14 8 30 17"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        fill="none"
+        strokeLinecap="round"
+        opacity="0.5"
+      />
+      {/* Inner wing detail right */}
+      <path
+        d="M56 26 Q46 8 30 17"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        fill="none"
+        strokeLinecap="round"
+        opacity="0.5"
+      />
+      {/* Tail */}
+      <path
+        d="M30 18 L28 24 L26 20"
         stroke="currentColor"
         strokeWidth="1.5"
         fill="none"
         strokeLinecap="round"
+        strokeLinejoin="round"
         opacity="0.6"
       />
       <path
-        d="M34 16 Q26 6 20 12"
+        d="M30 18 L32 24 L34 20"
         stroke="currentColor"
         strokeWidth="1.5"
         fill="none"
         strokeLinecap="round"
+        strokeLinejoin="round"
         opacity="0.6"
       />
     </svg>
@@ -48,18 +80,47 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-blue-50 text-gray-800 relative overflow-hidden">
-      {/* ── Animated seagulls ── */}
-      <div className="absolute top-20 left-10 opacity-20 animate-seagull-fly text-sky-600">
+      {/* ── Animated seagulls — header area only ── */}
+      {/* Layer 1: Large foreground gulls */}
+      <div className="absolute top-8 left-8 opacity-30 animate-seagull-fly text-sky-600" style={{ animationDuration: "9s" }}>
+        <SeagullSvg size={42} />
+      </div>
+      <div className="absolute top-20 right-16 opacity-25 animate-seagull-fly-reverse text-blue-500" style={{ animationDelay: "1.5s", animationDuration: "11s" }}>
         <SeagullSvg size={36} />
       </div>
-      <div className="absolute top-40 right-20 opacity-15 animate-seagull-fly-reverse text-blue-500" style={{ animationDelay: "2s" }}>
+      <div className="absolute top-44 left-1/4 opacity-20 animate-seagull-fly text-sky-500" style={{ animationDelay: "3s", animationDuration: "10s" }}>
+        <SeagullSvg size={48} />
+      </div>
+      <div className="absolute top-60 right-1/3 opacity-25 animate-seagull-fly-reverse text-blue-400" style={{ animationDelay: "5s", animationDuration: "8s" }}>
+        <SeagullSvg size={34} />
+      </div>
+
+      {/* Layer 2: Mid-distance gulls */}
+      <div className="absolute top-12 left-1/2 opacity-18 animate-seagull-fly text-sky-400" style={{ animationDelay: "2s", animationDuration: "13s" }}>
+        <SeagullSvg size={30} />
+      </div>
+      <div className="absolute top-36 right-8 opacity-22 animate-seagull-fly-reverse text-indigo-400" style={{ animationDelay: "4s", animationDuration: "9s" }}>
+        <SeagullSvg size={26} />
+      </div>
+      <div className="absolute top-56 left-10 opacity-18 animate-seagull-fly text-cyan-500" style={{ animationDelay: "6s", animationDuration: "12s" }}>
+        <SeagullSvg size={38} />
+      </div>
+      <div className="absolute top-72 right-1/4 opacity-20 animate-seagull-fly-reverse text-sky-500" style={{ animationDelay: "7s", animationDuration: "10s" }}>
         <SeagullSvg size={28} />
       </div>
-      <div className="absolute top-60 left-1/3 opacity-10 animate-seagull-fly text-sky-400" style={{ animationDelay: "4s" }}>
-        <SeagullSvg size={44} />
+
+      {/* Layer 3: Small distant gulls */}
+      <div className="absolute top-16 left-1/3 opacity-15 animate-seagull-fly text-blue-300" style={{ animationDelay: "1s", animationDuration: "14s" }}>
+        <SeagullSvg size={20} />
       </div>
-      <div className="absolute bottom-40 right-10 opacity-15 animate-seagull-fly-reverse text-blue-400" style={{ animationDelay: "6s" }}>
-        <SeagullSvg size={32} />
+      <div className="absolute top-48 right-12 opacity-14 animate-seagull-fly-reverse text-sky-300" style={{ animationDelay: "3.5s", animationDuration: "15s" }}>
+        <SeagullSvg size={18} />
+      </div>
+      <div className="absolute top-68 left-12 opacity-12 animate-seagull-fly text-cyan-300" style={{ animationDelay: "5.5s", animationDuration: "16s" }}>
+        <SeagullSvg size={22} />
+      </div>
+      <div className="absolute top-80 right-6 opacity-16 animate-seagull-fly-reverse text-blue-300" style={{ animationDelay: "8s", animationDuration: "11s" }}>
+        <SeagullSvg size={24} />
       </div>
 
       {/* ── Wave decoration ── */}

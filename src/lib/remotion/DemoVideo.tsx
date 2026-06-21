@@ -1,5 +1,5 @@
 /**
- * LyricVibe 全流程展示 Demo Video
+ * 音动字生 全流程展示 Demo Video
  *
  * 展示完整的产品工作流：
  * 1. Intro (0-4s)         — 品牌片头
@@ -281,13 +281,16 @@ const IntroPhase: React.FC<{ frame: number }> = ({ frame }) => {
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
           letterSpacing: "-0.03em", lineHeight: 1.1,
         }}>
-          LyricVibe
+          音动字生
         </h1>
       </div>
 
       {/* Subtitle */}
       <div style={{ opacity: subtitleOpacity, marginTop: 16, textAlign: "center" }}>
-        <p style={{ fontSize: 28, color: BRAND.gray, fontWeight: 500, letterSpacing: "0.05em" }}>
+        <p style={{ fontSize: 20, color: BRAND.sky, fontWeight: 400, letterSpacing: "0.15em" }}>
+          LyricVibe
+        </p>
+        <p style={{ fontSize: 28, color: BRAND.gray, fontWeight: 500, letterSpacing: "0.05em", marginTop: 8 }}>
           AI 驱动的歌词字幕 MV 生成器
         </p>
       </div>
@@ -1033,7 +1036,7 @@ const LyricShowcasePanel: React.FC<{ frame: number }> = ({ frame }) => {
             border: "1px solid rgba(16, 185, 129, 0.3)",
             color: BRAND.green, fontSize: 16, fontWeight: 600,
           }}>
-            ✅ 导出完成 — Made with LyricVibe
+            ✅ 导出完成 — 由音动字生制作
           </span>
         </div>
       )}
@@ -1195,7 +1198,7 @@ const Watermark: React.FC<{ frame: number }> = ({ frame }) => {
         background: "rgba(0,0,0,0.5)", padding: "6px 22px",
         borderRadius: 99, letterSpacing: "0.05em",
       }}>
-        Made with <span style={{ color: BRAND.sky }}>LyricVibe</span>
+        Made with <span style={{ color: BRAND.sky }}>音动字生</span>
       </span>
     </div>
   );

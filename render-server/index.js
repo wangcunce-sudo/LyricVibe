@@ -1,5 +1,5 @@
 /**
- * LyricVibe Render Server
+ * 音动字生 Render Server
  * 
  * 基于 Express.js + Remotion SSR API 的视频渲染服务
  * 
@@ -131,7 +131,7 @@ app.get("/renders/:id/output.mp4", (req, res) => {
   res.setHeader("Content-Type", "video/mp4");
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename="lyricvibe-${id}.mp4"`
+    `attachment; filename="yindongzisheng-${id}.mp4"`
   );
   fs.createReadStream(task.outputPath).pipe(res);
 });
@@ -219,7 +219,7 @@ async function startRender(renderId) {
   const inputProps = {
     videoUrl: task.inputProps.videoUrl || "",
     lyrics: task.inputProps.lyrics || [
-      { start: 0, end: 3, text: "🎵 Hello from LyricVibe", id: "1" },
+      { start: 0, end: 3, text: "🎵 你好，来自音动字生", id: "1" },
       { start: 3, end: 6, text: "Remotion Render Server", id: "2" },
       { start: 6, end: 9, text: "Powered by Docker", id: "3" },
     ],
@@ -277,7 +277,7 @@ async function startRender(renderId) {
 app.listen(PORT, () => {
   console.log(`
 ╔══════════════════════════════════════════════╗
-║       🎬 LyricVibe Render Server            ║
+║       🎬 音动字生 Render Server            ║
 ║                                              ║
 ║   服务地址: http://localhost:${PORT}              ║
 ║   健康检查: http://localhost:${PORT}/health       ║

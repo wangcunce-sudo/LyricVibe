@@ -12,9 +12,11 @@ import type {
   SubtitleTemplate,
 } from "@/lib/types";
 import { FILTER_PRESETS, styleParamsToTemplate, mergeTemplateWithStyle } from "@/lib/types";
+import type { SceneAnimSpec } from "@/lib/animation-types";
 import { toneEngine } from "@/lib/tone-engine";
 import { Player } from "@remotion/player";
 import { SubtitleComposition } from "@/lib/remotion/SubtitleComposition";
+import { AnimatedBackground } from "@/lib/remotion/AnimatedBackground";
 import type { BeatInfo } from "@/lib/beat-detector";
 import { detectBeatsFromUrl } from "@/lib/beat-detector";
 
@@ -32,6 +34,8 @@ interface VideoPreviewProps {
   isPlaying: boolean;
   onPlayPause: () => void;
   subtitleTemplate?: SubtitleTemplate;
+  backgroundScene?: SceneAnimSpec | null;
+  backgroundImage?: string;
 }
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -52,6 +56,8 @@ export function VideoPreview({
   isPlaying,
   onPlayPause,
   subtitleTemplate,
+  backgroundScene,
+  backgroundImage,
 }: VideoPreviewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [duration, setDuration] = useState(0);
@@ -330,8 +336,29 @@ export function VideoPreview({
         )}
         style={{ maxHeight: "60vh" }}
       >
-        {/* Background video or gradient */}
-        {hasVideo ? (
+        {/* Background: Animated scene (priority) > Image background > Video > Gradient */}
+        {backgroundScene ? (
+          <AnimatedScenePreview scene={backgroundScene} width={compWidth} height={compHeight} />
+        ) : backgroundImage ? (
+          <div className="absolute inset-0 overflow-hidden">
+            <img
+              src={backgroundImage}
+              alt="背景"
+              className="absolute inset-0 w-full h-full object-cover"
+              style={{
+                objectPosition: "center 30%",
+                animation: "kenBurnsPreview 20s ease-in-out infinite alternate",
+              }}
+            />
+            {/* 暗角叠加 */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background: "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.5) 100%)",
+              }}
+            />
+          </div>
+        ) : hasVideo ? (
           <video
             ref={videoRef}
             className="absolute inset-0 w-full h-full object-cover"
@@ -515,6 +542,99 @@ export function VideoPreview({
             <Volume2 className="w-4 h-4 text-sky-600" />
           )}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// AnimatedScenePreview — 简化的 CSS 动画背景预览
+// 用于前端实时预览，导出时由 Remotion SSR 完整渲染
+// ============================================================
+
+const AnimatedScenePreview: React.FC<{
+  scene: SceneAnimSpec;
+  width: number;
+  height: number;
+}> = ({ scene }) => {
+  // 构建渐变字符串
+  const stops = scene.background.stops
+    .map((s) => `${s.color} ${s.position * 100}%`)
+    .join(", ");
+
+  let gradientCss: React.CSSProperties = {};
+
+  switch (scene.background.type) {
+    case "linear": {
+      const angle = scene.background.angle ?? 180;
+      gradientCss = {
+        background: `linear-gradient(${angle}deg, ${stops})`,
+      };
+      break;
+    }
+    case "radial": {
+      const cx = (scene.background.centerX ?? 0.5) * 100;
+      const cy = (scene.background.centerY ?? 0.5) * 100;
+      gradientCss = {
+        background: `radial-gradient(circle at ${cx}% ${cy}%, ${stops})`,
+      };
+      break;
+    }
+    case "conic": {
+      const cx = (scene.background.centerX ?? 0.5) * 100;
+      const cy = (scene.background.centerY ?? 0.5) * 100;
+      gradientCss = {
+        background: `conic-gradient(from 0deg at ${cx}% ${cy}%, ${stops})`,
+      };
+      break;
+    }
+  }
+
+  // 粒子颜色取第一个作为点缀色
+  const particleColor = scene.particles?.colors?.[0] || scene.background.stops[1]?.color || "#87CEEB";
+
+  return (
+    <div
+      className="absolute inset-0 overflow-hidden"
+      style={gradientCss}
+    >
+      {/* 模拟粒子效果 — 用 CSS 伪随机点 */}
+      {scene.particles && (() => {
+        const particles = scene.particles;
+        return (
+        <div className="absolute inset-0" style={{ opacity: particles.maxOpacity * 0.5 }}>
+          {Array.from({ length: Math.min(particles.count, 40) }).map((_, i) => {
+            const left = ((i * 137 + 53) % 100);
+            const top = ((i * 97 + 31) % 100);
+            const size = 3 + (i % 6) * 2;
+            const delay = (i * 0.37) % 5;
+            return (
+              <div
+                key={i}
+                className="absolute rounded-full animate-pulse"
+                style={{
+                  left: `${left}%`,
+                  top: `${top}%`,
+                  width: size,
+                  height: size,
+                  backgroundColor: particleColor,
+                  opacity: 0.3 + (i % 3) * 0.2,
+                  animationDelay: `${delay}s`,
+                  animationDuration: `${2 + (i % 3)}s`,
+                  filter: particles.glow ? `blur(${size * 0.3}px)` : undefined,
+                }}
+              />
+            );
+          })}
+        </div>
+        );
+      })()}
+
+      {/* 场景名称标注 */}
+      <div className="absolute top-3 left-3 z-20">
+        <span className="px-2 py-0.5 bg-black/40 text-white/70 text-[10px] rounded-full backdrop-blur-sm">
+          🎬 {scene.name}
+        </span>
       </div>
     </div>
   );

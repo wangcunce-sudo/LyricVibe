@@ -49,16 +49,21 @@ function useJsonFormat(): boolean {
 }
 
 // ── AsyncLocalStorage for request ID tracking ──
-let AsyncLocalStorageClass: typeof import("node:async_hooks").AsyncLocalStorage | null = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const ah = require("node:async_hooks");
-  AsyncLocalStorageClass = ah.AsyncLocalStorage;
-} catch {
-  // Browser environment — no AsyncLocalStorage
+// NOTE: Using eval("require") to bypass webpack static analysis during Remotion bundling,
+// since webpack cannot handle "node:" scheme URIs and would fail with UnhandledSchemeError.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let AsyncLocalStorageClass: any = null;
+if (typeof window === "undefined") {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ah = eval("require")("node:async_hooks");
+    AsyncLocalStorageClass = ah.AsyncLocalStorage;
+  } catch {
+    // Node.js environment but async_hooks unavailable (edge runtime, etc.)
+  }
 }
 
-const requestIdStore = AsyncLocalStorageClass ? new AsyncLocalStorageClass<string>() : null;
+const requestIdStore: any = AsyncLocalStorageClass ? new AsyncLocalStorageClass() : null;
 
 /**
  * Run a function with a request ID attached to all log calls within it.

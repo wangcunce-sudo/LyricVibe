@@ -29,7 +29,7 @@ export async function GET(
   return new NextResponse(fileBuffer, {
     headers: {
       "Content-Type": "video/mp4",
-      "Content-Disposition": `inline; filename="lyricvibe-${id}.mp4"`,
+      "Content-Disposition": `inline; filename="yindongzisheng-${id}.mp4"`,
       "Content-Length": String(stat.size),
       "Accept-Ranges": "bytes",
       "Cache-Control": "no-cache, no-store, must-revalidate",

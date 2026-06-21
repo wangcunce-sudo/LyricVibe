@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Save to temp file
-      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lyricvibe-"));
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "yindongzisheng-"));
       const ext = path.extname(audioFile.name) || ".mp3";
       audioPath = path.join(tmpDir, `audio${ext}`);
 
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         audioPath = path.join(process.cwd(), "public", audioUrl);
       } else if (audioUrl.startsWith("http")) {
         // Download remote audio
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lyricvibe-"));
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "yindongzisheng-"));
         audioPath = path.join(tmpDir, "audio.mp3");
 
         logger.info("transcribe", `Downloading audio from: ${audioUrl}`);

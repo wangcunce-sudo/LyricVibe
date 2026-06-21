@@ -130,37 +130,37 @@ input[type="range"]::-moz-range-thumb {
 /* Seagull flying animation */
 @keyframes seagull-fly {
   0% {
-    transform: translate(0, 0) rotate(-5deg);
+    transform: translate(0, 0) rotate(-8deg);
   }
   25% {
-    transform: translate(30px, -15px) rotate(2deg);
+    transform: translate(50px, -25px) rotate(4deg);
   }
   50% {
-    transform: translate(60px, -5px) rotate(8deg);
+    transform: translate(100px, -8px) rotate(12deg);
   }
   75% {
-    transform: translate(90px, -20px) rotate(3deg);
+    transform: translate(140px, -30px) rotate(5deg);
   }
   100% {
-    transform: translate(120px, 0) rotate(-5deg);
+    transform: translate(180px, 0) rotate(-8deg);
   }
 }
 
 @keyframes seagull-fly-reverse {
   0% {
-    transform: translate(0, 0) scaleX(-1) rotate(-5deg);
+    transform: translate(0, 0) scaleX(-1) rotate(-8deg);
   }
   25% {
-    transform: translate(-30px, -12px) scaleX(-1) rotate(3deg);
+    transform: translate(-50px, -22px) scaleX(-1) rotate(5deg);
   }
   50% {
-    transform: translate(-60px, -3px) scaleX(-1) rotate(-6deg);
+    transform: translate(-100px, -5px) scaleX(-1) rotate(-10deg);
   }
   75% {
-    transform: translate(-90px, -18px) scaleX(-1) rotate(2deg);
+    transform: translate(-140px, -28px) scaleX(-1) rotate(4deg);
   }
   100% {
-    transform: translate(-120px, 0) scaleX(-1) rotate(-5deg);
+    transform: translate(-180px, 0) scaleX(-1) rotate(-8deg);
   }
 }
 
@@ -196,4 +196,21 @@ input[type="range"]::-moz-range-thumb {
 
 .animate-wave-move {
   animation: wave-move 20s linear infinite;
+}
+
+/* Ken Burns effect for image background preview */
+@keyframes kenBurnsPreview {
+  0% {
+    transform: scale(1) translate(0, 0);
+  }
+  50% {
+    transform: scale(1.08) translate(-1%, -0.5%);
+  }
+  100% {
+    transform: scale(1.04) translate(0.5%, 0.5%);
+  }
+}
+
+.animate-kenburns {
+  animation: kenBurnsPreview 20s ease-in-out infinite alternate;
 }

@@ -1,0 +1,49 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "返回" [ref=e5] [cursor=pointer]:
+          - /url: /
+          - img [ref=e6]
+          - generic [ref=e8]: 返回
+        - heading "LyricVibe" [level=1] [ref=e9]:
+          - img [ref=e10]
+          - text: LyricVibe
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - button "中文" [ref=e16]
+          - button "EN" [ref=e17]
+        - button "体验演示" [ref=e18]:
+          - img [ref=e19]
+          - text: 体验演示
+        - button "导出" [disabled] [ref=e22]:
+          - img [ref=e23]
+          - text: 导出
+    - generic [ref=e28]:
+      - generic [ref=e30]:
+        - generic [ref=e32] [cursor=pointer]:
+          - img [ref=e33]
+          - generic [ref=e35]:
+            - paragraph [ref=e36]: 拖入视频文件
+            - paragraph [ref=e37]: MP4, MOV, WebM（必需）
+          - generic [ref=e38]:
+            - generic [ref=e39]: 必需
+            - generic [ref=e40]:
+              - img [ref=e41]
+              - text: 选择视频
+        - generic [ref=e45] [cursor=pointer]:
+          - img [ref=e46]
+          - generic [ref=e50]:
+            - paragraph [ref=e51]: 拖入音频文件
+            - paragraph [ref=e52]: MP3, WAV, AAC（可选，默认使用视频音轨）
+          - generic [ref=e53]:
+            - generic [ref=e54]: 可选
+            - generic [ref=e55]:
+              - img [ref=e56]
+              - text: 选择音频
+      - generic [ref=e61]: 或者
+      - button "体验演示 — opalite-tiktok热舞" [ref=e63]:
+        - img [ref=e64]
+        - text: 体验演示 — opalite-tiktok热舞
+      - paragraph [ref=e66]: opalite-tiktok热舞 MV + AI 风格分析
+  - alert [ref=e67]

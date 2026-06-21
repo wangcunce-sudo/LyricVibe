@@ -24,7 +24,10 @@ import {
 import { logger } from "../logger";
 import type { LyricLine, StyleParams, FilterType, SubtitleTemplate } from "../types";
 import { FILTER_PRESETS, styleParamsToTemplate } from "../types";
+import type { SceneAnimSpec } from "../animation-types";
 import { SubtitleComposition } from "./SubtitleComposition";
+import { AnimatedBackground } from "./AnimatedBackground";
+import { ImageAnimatedBackground } from "./ImageAnimatedBackground";
 
 interface CompositionProps {
   videoUrl?: string;
@@ -36,6 +39,10 @@ interface CompositionProps {
   speed?: number;
   pitch?: number;
   subtitleTemplate?: SubtitleTemplate;
+  /** AI 生成的动画循环底片（与 videoUrl 互斥，二选一） */
+  backgroundScene?: SceneAnimSpec;
+  /** 静态图片背景（带 Ken Burns + 飘动动效） */
+  backgroundImage?: string;
 }
 
 export const LyricVibeComposition: React.FC<CompositionProps> = (props) => {
@@ -60,6 +67,8 @@ export const LyricVibeComposition: React.FC<CompositionProps> = (props) => {
   const speed = props.speed ?? inputPropsFromRemotion?.speed ?? 1;
   const pitch = props.pitch ?? inputPropsFromRemotion?.pitch ?? 0;
   const subtitleTemplate = props.subtitleTemplate ?? inputPropsFromRemotion?.subtitleTemplate;
+  const backgroundScene = props.backgroundScene ?? inputPropsFromRemotion?.backgroundScene;
+  const backgroundImage = props.backgroundImage ?? inputPropsFromRemotion?.backgroundImage;
 
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
@@ -73,6 +82,7 @@ export const LyricVibeComposition: React.FC<CompositionProps> = (props) => {
     logger.info("Composition", "lyrics count:", lyrics?.length || 0);
     logger.info("Composition", "videoUrl:", videoUrl);
     logger.info("Composition", "audioUrl:", audioUrl);
+    logger.info("Composition", "backgroundScene present:", !!backgroundScene);
     logger.info("Composition", "=====================================");
   }
 
@@ -111,8 +121,22 @@ export const LyricVibeComposition: React.FC<CompositionProps> = (props) => {
         filter: filterStyle,
       }}
     >
-      {/* Background video */}
-      {resolvedVideoSrc && (
+      {/* Background: Animated scene (priority) > Image with animation > Static video > Solid color */}
+      {backgroundScene ? (
+        <AnimatedBackground
+          scene={backgroundScene}
+          width={width}
+          height={height}
+        />
+      ) : backgroundImage ? (
+        <ImageAnimatedBackground
+          imageSrc={backgroundImage}
+          width={width}
+          height={height}
+          scene={backgroundScene}
+          intensity={0.6}
+        />
+      ) : resolvedVideoSrc ? (
         <OffthreadVideo
           src={resolvedVideoSrc}
           style={{
@@ -124,7 +148,7 @@ export const LyricVibeComposition: React.FC<CompositionProps> = (props) => {
           playbackRate={speed}
           muted
         />
-      )}
+      ) : null}
 
       {/* Audio track */}
       {resolvedAudioSrc && <Audio src={resolvedAudioSrc} />}

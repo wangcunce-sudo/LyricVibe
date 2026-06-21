@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "LyricVibe — AI 个性化歌词字幕 MV 生成器",
+  title: "音动字生 — AI 个性化歌词字幕 MV 生成器",
   description:
     "将你的视频和音乐变成精美的歌词字幕 MV。AI 分析情感，生成匹配的字幕样式，一切由你自定义。",
 };
